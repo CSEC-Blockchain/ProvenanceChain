@@ -1,0 +1,12 @@
+node_modules
+.next
+out
+dist
+*.db
+*.db-journal
+.env*.local
+test-results
+playwright-report
+contracts/out
+contracts/cache
+

@@ -1,0 +1,25 @@
+{
+  "name": "provenance-chain-root",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspace=apps/web",
+    "start": "npm run start --workspace=apps/web",
+    "test": "npm run test:contracts && npm run test:shared && npm run test:e2e",
+    "test:contracts": "export PATH=\"$HOME/.foundry/bin:$PATH\" && cd contracts && forge test",
+    "test:shared": "npm run test --workspace=packages/shared",
+    "test:web": "npm run test --workspace=apps/web",
+    "test:e2e": "npx playwright test",
+    "seed": "tsx scripts/seed-demo.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.43.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.4.5"
+  }
+}
