@@ -51,10 +51,17 @@ export default function DistributorPage() {
   const [activeStep, setActiveStep] = useState<'idle' | 'metamask' | 'mining' | 'done'>('idle');
   const [error, setError] = useState<string | null>(null);
 
-  // Send to Shop modal
+  // Send to downstream Distributor or Shop modal
   const [transferBatchId, setTransferBatchId] = useState<number | null>(null);
-  const [shopAddress, setShopAddress] = useState<string>('0x90F79bf6EB2c4f870365E785982E1f101E93b906'); // Roast & Co.
+  const [recipientChoice, setRecipientChoice] = useState<string>('0x90F79bf6EB2c4f870365E785982E1f101E93b906'); // Default: Roast & Co.
+  const [customRecipient, setCustomRecipient] = useState<string>('');
   const [dispatchLocation, setDispatchLocation] = useState<string>('Addis Distribution Terminal Hub');
+
+  const knownPartners = [
+    { label: 'Roast & Co. (Certified Retail Shop)', address: '0x90F79bf6EB2c4f870365E785982E1f101E93b906' },
+    { label: 'Addis Export Co. (Wholesale Distributor)', address: '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC' },
+    { label: 'Custom Downstream Distributor / Shop Address', address: 'custom' },
+  ];
 
   // Load distributor data
   useEffect(() => {
@@ -159,10 +166,16 @@ export default function DistributorPage() {
     }
   }
 
-  // Send to Shop
+  // Dispatch onward to Distributor or Shop
   async function handleSendToShop(e: React.FormEvent) {
     e.preventDefault();
     if (!transferBatchId || !address || typeof window === 'undefined') return;
+
+    const target = recipientChoice === 'custom' ? customRecipient.trim() : recipientChoice;
+    if (!target || !target.startsWith('0x') || target.length !== 42) {
+      setError('Please provide a valid 42-character 0x Ethereum address for the recipient.');
+      return;
+    }
 
     setError(null);
     setActiveStep('metamask');
@@ -173,7 +186,7 @@ export default function DistributorPage() {
       const calldata = encodeFunctionData({
         abi: ProvenanceRegistryABI,
         functionName: 'initiateTransfer',
-        args: [BigInt(transferBatchId), shopAddress as Hex, dispatchLocation],
+        args: [BigInt(transferBatchId), target as Hex, dispatchLocation],
       });
 
       const hash = await sendMetaMaskTransaction({
@@ -188,7 +201,12 @@ export default function DistributorPage() {
       setTransferBatchId(null);
     } catch (err: any) {
       console.error(err);
-      setError(err?.message || 'Send to shop failed');
+      const msg = err?.message || '';
+      if (msg.includes('InvalidPath')) {
+        setError('Transfer rejected on-chain: The recipient must hold either the DISTRIBUTOR or SHOP role.');
+      } else {
+        setError(msg || 'Dispatch failed');
+      }
       setActiveStep('idle');
     }
   }
@@ -341,7 +359,7 @@ export default function DistributorPage() {
                               className="flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow hover:bg-slate-800 transition"
                             >
                               <Send className="h-3.5 w-3.5" />
-                              <span>Dispatch to Shop</span>
+                              <span>Dispatch Onward</span>
                             </button>
                           )}
                         </div>
@@ -352,12 +370,12 @@ export default function DistributorPage() {
               )}
             </div>
 
-            {/* Modal: Dispatch to Shop */}
+            {/* Modal: Dispatch Onward */}
             {transferBatchId && (
               <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-5 shadow-xs space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="font-bold text-emerald-950 text-xs uppercase tracking-wider">
-                    Dispatch Batch #{transferBatchId} to Licensed Retail Shop
+                    Dispatch Batch #{transferBatchId} to Distributor or Retail Shop
                   </h3>
                   <button onClick={() => setTransferBatchId(null)} className="text-xs text-slate-400 font-bold">
                     &times;
@@ -366,17 +384,32 @@ export default function DistributorPage() {
 
                 <form onSubmit={handleSendToShop} className="space-y-3 text-xs">
                   <div>
-                    <label className="block font-semibold text-slate-700">Choose Certified Shop</label>
+                    <label className="block font-semibold text-slate-700">Choose Downstream Recipient</label>
                     <select
-                      value={shopAddress}
-                      onChange={(e) => setShopAddress(e.target.value)}
+                      value={recipientChoice}
+                      onChange={(e) => setRecipientChoice(e.target.value)}
                       className="mt-1 w-full rounded-xl border border-slate-300 p-2 text-xs bg-white"
                     >
-                      <option value="0x90F79bf6EB2c4f870365E785982E1f101E93b906">
-                        Roast & Co. (0x90F7...906)
-                      </option>
+                      {knownPartners.map((p) => (
+                        <option key={p.address} value={p.address}>
+                          {p.label}
+                        </option>
+                      ))}
                     </select>
                   </div>
+
+                  {recipientChoice === 'custom' && (
+                    <div>
+                      <label className="block font-semibold text-slate-700">Enter Recipient Address (0x...)</label>
+                      <input
+                        type="text"
+                        placeholder="0x..."
+                        value={customRecipient}
+                        onChange={(e) => setCustomRecipient(e.target.value)}
+                        className="mt-1 w-full rounded-xl border border-slate-300 p-2 text-xs font-mono bg-white"
+                      />
+                    </div>
+                  )}
 
                   <div>
                     <label className="block font-semibold text-slate-700">Dispatch Hub Location</label>
@@ -400,7 +433,7 @@ export default function DistributorPage() {
                         ? 'Confirm in MetaMask...'
                         : activeStep === 'mining'
                         ? 'Recording Handover On-Chain...'
-                        : 'Sign & Initiate Transfer to Shop'}
+                        : 'Sign & Initiate Transfer Onward'}
                     </span>
                   </button>
                 </form>

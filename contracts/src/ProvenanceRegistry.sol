@@ -383,10 +383,11 @@ contract ProvenanceRegistry is AccessControl, Pausable {
         // 1. Producer -> Distributor
         // 2. Producer -> Shop
         // 3. Distributor -> Shop
+        // 4. Distributor -> Distributor (multi-tier logistics)
         if (fromProducer && (toDistributor || toShop)) {
             return;
         }
-        if (fromDistributor && toShop) {
+        if (fromDistributor && (toDistributor || toShop)) {
             return;
         }
 

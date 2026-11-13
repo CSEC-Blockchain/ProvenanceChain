@@ -153,7 +153,12 @@ export default function ShopPage() {
       setActiveStep('done');
     } catch (err: any) {
       console.error(err);
-      setError(err?.message || 'Accept transfer failed');
+      const msg = err?.message || '';
+      if (msg.includes('NotPendingRecipient') || msg.includes('NoPendingTransfer')) {
+        setError('Transaction failed on-chain: You are not the pending recipient of this transfer.');
+      } else {
+        setError(msg || 'Accept transfer failed');
+      }
       setActiveStep('idle');
     }
   }
@@ -184,7 +189,14 @@ export default function ShopPage() {
       setActiveStep('done');
     } catch (err: any) {
       console.error(err);
-      setError(err?.message || 'Mark sold out failed');
+      const msg = err?.message || '';
+      if (msg.includes('0xd86ad9cf') || msg.includes('UnauthorizedCaller')) {
+        setError('Transaction failed on-chain: Unauthorized caller. Your connected wallet must be the current batch holder AND hold the on-chain SHOP role.');
+      } else if (msg.includes('0x40c') || msg.includes('execution reverted')) {
+        setError('Transaction failed on-chain: Smart contract execution reverted. Ensure your account holds the SHOP role and currently owns this batch.');
+      } else {
+        setError(msg || 'Mark sold out failed');
+      }
       setActiveStep('idle');
     }
   }

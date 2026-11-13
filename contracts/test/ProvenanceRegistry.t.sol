@@ -217,15 +217,22 @@ contract ProvenanceRegistryTest is Test {
         vm.expectRevert(abi.encodeWithSelector(ProvenanceRegistry.InvalidPath.selector, distributor, producer));
         registry.initiateTransfer(id, producer, "Return");
 
-        // Distributor cannot transfer to another Distributor
+        // Distributor cannot transfer to Random User
+        vm.prank(distributor);
+        vm.expectRevert(abi.encodeWithSelector(ProvenanceRegistry.InvalidPath.selector, distributor, randomUser));
+        registry.initiateTransfer(id, randomUser, "Void");
+
+        // Distributor CAN transfer to another Distributor
         address distributor2 = address(0xD02);
         bytes32 distRole = registry.DISTRIBUTOR_ROLE();
         vm.prank(admin);
         registry.grantRole(distRole, distributor2);
 
         vm.prank(distributor);
-        vm.expectRevert(abi.encodeWithSelector(ProvenanceRegistry.InvalidPath.selector, distributor, distributor2));
-        registry.initiateTransfer(id, distributor2, "Depot 2");
+        registry.initiateTransfer(id, distributor2, "Regional Depot to Local Depot");
+        vm.prank(distributor2);
+        registry.acceptTransfer(id, "Local Depot");
+        assertEq(registry.getBatch(id).currentHolder, distributor2);
     }
 
     // -------------------------------------------------------------------------

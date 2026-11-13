@@ -125,8 +125,8 @@ async function main() {
     args: [ACCOUNTS.shop.address, ACCOUNTS.shop.name],
   });
 
-  // Also pre-fund and grant roles to common MetaMask test address if desired
-  const commonMetaMask = '0x6411585ce9378c91b6926b85c761f902c4443fbf' as Hex;
+  // Also pre-fund and grant roles to common MetaMask test address
+  const commonMetaMask = '0x6411585cE9370C91B6926B85C761f902C4443fbF' as Hex;
   await adminWallet.writeContract({
     address: contractAddress,
     abi: ProvenanceRegistryABI,
