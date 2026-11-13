@@ -68,6 +68,7 @@ export default function ProducerPage() {
   const [transferBatchId, setTransferBatchId] = useState<number | null>(null);
   const [recipientAddress, setRecipientAddress] = useState<string>('');
   const [transferLocation, setTransferLocation] = useState<string>('Addis Distribution Terminal');
+  const [handoverMode, setHandoverMode] = useState<'direct' | 'two_step'>('direct');
   const [transferStep, setTransferStep] = useState<'idle' | 'metamask' | 'mining' | 'done'>('idle');
 
   // Known registered partners
@@ -206,10 +207,11 @@ export default function ProducerPage() {
 
     try {
       const contractAddress = getContractAddress();
+      const functionName = handoverMode === 'direct' ? 'transferCustody' : 'initiateTransfer';
 
       const calldata = encodeFunctionData({
         abi: ProvenanceRegistryABI,
-        functionName: 'initiateTransfer',
+        functionName,
         args: [BigInt(transferBatchId), recipientAddress as Hex, transferLocation],
       });
 
@@ -528,6 +530,40 @@ export default function ProducerPage() {
                           </option>
                         ))}
                       </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700">Handover Mode</label>
+                      <div className="mt-1 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setHandoverMode('direct')}
+                          className={`rounded-xl border p-2 text-left text-xs font-semibold transition ${
+                            handoverMode === 'direct'
+                              ? 'border-indigo-600 bg-indigo-50 text-indigo-950'
+                              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="font-bold">⚡ Direct Transfer</div>
+                          <div className="text-[10px] text-slate-500 font-normal mt-0.5 leading-snug">
+                            Appends event immediately.
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setHandoverMode('two_step')}
+                          className={`rounded-xl border p-2 text-left text-xs font-semibold transition ${
+                            handoverMode === 'two_step'
+                              ? 'border-indigo-600 bg-indigo-50 text-indigo-950'
+                              : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="font-bold">🔐 Two-Step Transfer</div>
+                          <div className="text-[10px] text-slate-500 font-normal mt-0.5 leading-snug">
+                            Requires recipient to accept.
+                          </div>
+                        </button>
+                      </div>
                     </div>
 
                     <div>
