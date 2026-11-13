@@ -1,7 +1,7 @@
 # ProvenanceChain Demo Links
 
 ## Smart Contract Details
-- **Address**: `0x322813fd9a801c5507c9de605d63cea4f2ce6c44`
+- **Address**: `0x5fbdb2315678afecb367f032d93f642f64180aa3`
 - **Network**: Anvil Localhost (`http://127.0.0.1:8545`, Chain ID: `31337`)
 - **Deployer/Admin**: `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266`
 

@@ -32,7 +32,25 @@ export const activeChain = isBaseSepolia ? baseSepoliaChain : anvilChain;
 
 export const wagmiConfig = createConfig({
   chains: [anvilChain, baseSepoliaChain],
-  connectors: [injected()],
+  connectors: [
+    injected({
+      target() {
+        if (typeof window === 'undefined') return undefined;
+        const anyWin = window as any;
+        // Specifically filter for MetaMask and reject Phantom or others
+        if (anyWin.ethereum?.providers?.length) {
+          const mm = anyWin.ethereum.providers.find(
+            (p: any) => p.isMetaMask && !p.isPhantom
+          );
+          if (mm) return { id: 'metaMask', name: 'MetaMask', provider: mm };
+        }
+        if (anyWin.ethereum?.isMetaMask && !anyWin.ethereum?.isPhantom) {
+          return { id: 'metaMask', name: 'MetaMask', provider: anyWin.ethereum };
+        }
+        return { id: 'metaMask', name: 'MetaMask', provider: anyWin.ethereum };
+      },
+    }),
+  ],
   transports: {
     [anvilChain.id]: http(process.env.NEXT_PUBLIC_RPC_URL || 'http://127.0.0.1:8545'),
     [baseSepoliaChain.id]: http('https://sepolia.base.org'),

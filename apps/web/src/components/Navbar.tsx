@@ -12,7 +12,7 @@ import { activeChain } from '@/lib/wagmi';
 export function Navbar() {
   const pathname = usePathname();
   const { address, isConnected } = useAccount();
-  const { connect } = useConnect();
+  const { connectors, connect } = useConnect();
   const { disconnect } = useDisconnect();
   const chainId = useChainId();
   const { switchChain } = useSwitchChain();
@@ -196,7 +196,10 @@ export function Navbar() {
               </div>
             ) : (
               <button
-                onClick={() => connect({ connector: injected() })}
+                onClick={() => {
+                  const mm = connectors.find((c) => c.id === 'metaMask' || c.name === 'MetaMask') || connectors[0];
+                  if (mm) connect({ connector: mm });
+                }}
                 className="flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-bold text-white shadow hover:bg-slate-800 transition active:scale-95"
               >
                 <Wallet className="h-4 w-4 text-emerald-400" />

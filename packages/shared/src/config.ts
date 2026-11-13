@@ -14,9 +14,9 @@ export const CHAINS = {
 
 export const CONTRACT_ADDRESSES: Record<number, `0x${string}`> = {
   // Anvil local development address
-  31337: '0x322813fd9a801c5507c9de605d63cea4f2ce6c44',
+  31337: '0x5fbdb2315678afecb367f032d93f642f64180aa3',
   // Base Sepolia default placeholder
-  84532: '0x322813fd9a801c5507c9de605d63cea4f2ce6c44',
+  84532: '0x5fbdb2315678afecb367f032d93f642f64180aa3',
 };
 
 export function getContractAddress(chainId?: number): `0x${string}` {
