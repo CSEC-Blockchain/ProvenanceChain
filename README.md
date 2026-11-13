@@ -1,19 +1,34 @@
 # ProvenanceChain
 
-> A role-based product authenticity and supply chain provenance decentralized application (dApp) powered by Ethereum smart contracts and MetaMask.
+> **Role-Based Product Authenticity & Custody Provenance on Ethereum**  
+> Enforcing tamper-proof supply chain custody handovers on-chain with MetaMask, Next.js, and OpenZeppelin smart contracts. Zero database — 100% blockchain as the single source of truth.
 
 ---
 
-## 1. Executive Summary & Design Principles
+## 1. System Overview
 
-Counterfeit goods—such as specialty coffee, honey, and pharmaceuticals—harm consumers and honest producers. **ProvenanceChain** guarantees product authenticity by enforcing immutable, append-only custody handovers on the Ethereum blockchain.
+Counterfeit and adulterated products (such as single-origin specialty coffee, baby formula, olive oil, and pharmaceuticals) cost billions annually and pose serious health risks. Centralized supply chain tracking systems rely on closed databases that can be quietly altered, backdated, or fabricated by malicious insiders or compromised API credentials.
 
-- **Zero-Friction Consumer Verification**: Consumers scan a QR code (`https://<host>/v/<batchId>`) with any smartphone camera. They see the full journey with a cryptographic authenticity verdict with **no wallet, no app download, and zero crypto**.
-- **Role-Enforced On-Chain Supply Chain**: The smart contract strictly enforces valid commercial paths:
-  $$\text{Producer} \longrightarrow \text{Distributor} \longrightarrow \text{Shop}$$
-  $$\text{Producer} \longrightarrow \text{Shop (Direct)}$$
-  Any invalid handovers (e.g., Shop &rarr; Producer or Distributor &rarr; Distributor) are reverted at the EVM contract level.
-- **Pure On-Chain Source of Truth**: There is **no centralized database**. All batches, custody events, and business display names are stored directly on the smart contract and queried in real-time via public RPC.
+**ProvenanceChain** solves this by enforcing immutable, cryptographically signed handovers directly on the Ethereum blockchain:
+
+1. **Role-Enforced Custody Transitions**:
+   $$\text{Producer} \longrightarrow \text{Distributor} \longrightarrow \text{Retail Shop}$$
+   $$\text{Producer} \longrightarrow \text{Retail Shop (Direct)}$$
+   $$\text{Distributor} \longrightarrow \text{Distributor (Multi-Tier Logistics)}$$
+   Any unauthorized custody transfer (e.g. Shop &rarr; Producer or random unauthorized wallet) reverts at the EVM contract level.
+
+2. **Dual Handover Engine**:
+   - **⚡ Direct Transfer**: Transfers custody and appends an immutable `CustodyEvent` to the blockchain audit trail immediately.
+   - **🔐 Two-Step Transfer**: Initiates transfer and marks the batch *In Transit*. Custody and timeline events are only finalized when the designated recipient verifies and signs `acceptTransfer`.
+
+3. **Zero-Friction Consumer Verification**:
+   - Consumers scan the product QR code (`https://<domain>/v/<batchId>`) using any standard smartphone camera.
+   - The page queries the blockchain directly via a public RPC client with **no MetaMask required, no wallet connection, and zero crypto needed**.
+   - Displays a prominent color-coded verdict (✅ AUTHENTIC, ⚠️ CAUTION, ❌ RECALLED, ❌ NOT FOUND) and an interactive chronological audit trail.
+
+4. **Zero Backend Database**:
+   - The Ethereum smart contract is the single source of truth.
+   - All product batch details, cryptographic metadata hashes, display names, and custody logs are read directly from on-chain state.
 
 ---
 
@@ -21,173 +36,204 @@ Counterfeit goods—such as specialty coffee, honey, and pharmaceuticals—harm 
 
 ```mermaid
 flowchart TD
-    subgraph Roles ["Supply Chain Actors (MetaMask Required)"]
-        ADMIN["Admin<br/>(DEFAULT_ADMIN_ROLE)"]
-        PRODUCER["Producer<br/>(PRODUCER_ROLE)"]
-        DISTRIBUTOR["Distributor<br/>(DISTRIBUTOR_ROLE)"]
-        SHOP["Shop<br/>(SHOP_ROLE)"]
+    subgraph Roles ["Supply Chain Actors (MetaMask Authenticated)"]
+        ADMIN["Platform Admin<br/>(DEFAULT_ADMIN_ROLE)"]
+        PRODUCER["Certified Producer<br/>(PRODUCER_ROLE)"]
+        DISTRIBUTOR["Logistics Distributor<br/>(DISTRIBUTOR_ROLE)"]
+        SHOP["Retail Shop<br/>(SHOP_ROLE)"]
     end
 
-    subgraph Contract ["Smart Contract: ProvenanceRegistry.sol"]
-        BATCHES[("Batches Storage<br/>(productName, origin, metadataHash, status)")]
-        CUSTODY[("Append-Only Custody History<br/>from, to, timestamp, location")]
+    subgraph Contract ["Ethereum Smart Contract: ProvenanceRegistry.sol"]
+        BATCHES[("Batches Mapping<br/>id, producer, currentHolder, status")]
+        HISTORY[("Append-Only Custody Log<br/>from, to, timestamp, location")]
         NAMES[("Display Names Registry<br/>address -> string")]
+        ROLES[("AccessControl RBAC<br/>Admin, Producer, Distributor, Shop")]
     end
 
-    subgraph PublicScan ["Consumer Scan (Zero Wallet / Zero Crypto)"]
-        PHONE["Smartphone QR Camera"]
-        VERDICT["Consumer Scan Page (/v/[batchId])<br/>AUTHENTIC / CAUTION / RECALLED / FAKE"]
+    subgraph PublicExplorer ["Public Scan Explorer (Zero Wallet Required)"]
+        PHONE["Consumer Smartphone Camera"]
+        SCANPAGE["Scan Explorer (/v/[batchId])<br/>Verdict + Chronological Journey"]
     end
 
-    ADMIN -->|grantRole & setDisplayName| NAMES
-    PRODUCER -->|createBatch & initiateTransfer| BATCHES
-    PRODUCER -->|Custody Handover| DISTRIBUTOR
-    DISTRIBUTOR -->|acceptTransfer & initiateTransfer| CUSTODY
-    DISTRIBUTOR -->|Custody Handover| SHOP
-    SHOP -->|acceptTransfer & markSoldOut| CUSTODY
+    ADMIN -->|grantRole & setDisplayName| ROLES
+    ADMIN -->|Global Activity Feed & Recall| BATCHES
+    PRODUCER -->|createBatch| BATCHES
+    PRODUCER -->|transferCustody / initiateTransfer| HISTORY
+    DISTRIBUTOR -->|acceptTransfer & dispatch onward| HISTORY
+    SHOP -->|acceptTransfer & markSoldOut| BATCHES
 
-    PHONE -->|Scan Package QR| VERDICT
-    VERDICT -->|Read On-Chain State via Viem Public Client| Contract
+    PHONE -->|Scans Package QR Code| SCANPAGE
+    SCANPAGE -->|Reads On-Chain State via Viem Public Client| Contract
 ```
 
 ---
 
-## 3. Tech Stack
+## 3. Supply Chain Roles & Responsibilities
 
-- **Smart Contracts**: Solidity `^0.8.24`, Foundry, OpenZeppelin (`AccessControl`, `Pausable`).
-- **Blockchain**: Base Sepolia (`chainId: 84532`) testnet / local Anvil (`chainId: 31337`) dev node.
-- **Frontend**: Next.js 14+ (App Router), TypeScript, Tailwind CSS, Lucide icons.
-- **Web3 Wallet Client**: MetaMask via `wagmi` + `viem` with injected connector and automatic network switching.
-- **No Database**: Pure blockchain state.
-- **Testing**: Foundry test suite (unit + fuzz testing), Vitest, and Playwright end-to-end tests.
+| Role | Contract Identifier | Allowed Actions | Portal Route |
+| :--- | :--- | :--- | :--- |
+| **ADMIN** | `DEFAULT_ADMIN_ROLE` | Grant/revoke roles, assign business display names, monitor global supply chain activities, and issue emergency safety recalls. | `/admin` |
+| **PRODUCER** | `PRODUCER_ROLE` | Register new product batches on-chain, generate & download package QR code labels, and initiate custody transfers to distributors or shops. | `/producer` |
+| **DISTRIBUTOR** | `DISTRIBUTOR_ROLE` | Accept incoming shipments from certified producers, dispatch shipments onward to regional distributors or licensed retail shops. | `/distributor` |
+| **SHOP** | `SHOP_ROLE` | Accept incoming wholesale shipments, manage retail shelf inventory, and mark batches as Sold Out. | `/shop` |
+| **CONSUMER** | *(None)* | Read-only access to verify package authenticity, inspect full unbroken custody history, and check safety alerts without any wallet. | `/v/[batchId]` |
 
 ---
 
-## 4. Setup & Running Locally
+## 4. Tech Stack
+
+- **Smart Contract**: Solidity `^0.8.24`, OpenZeppelin Contracts (`AccessControl`, `Pausable`), custom errors, append-only structs.
+- **Framework & Tooling**: Foundry (`anvil`, `forge`, `cast`), Viem 2, Wagmi 2.
+- **Frontend**: Next.js 14+ (App Router), TypeScript, Tailwind CSS, Lucide icons.
+- **Wallet Integration**: MetaMask via injected EIP-1193 connector, automatic chain detection, and nonce desync handling.
+- **Testing**: Foundry test suite (unit + fuzz testing), Vitest unit tests, Playwright end-to-end stories.
+
+---
+
+## 5. Local Setup & Quickstart
 
 ### Prerequisites
 - Node.js `v18+` and `npm`
-- Foundry (`anvil`, `forge`): `curl -L https://foundry.paradigm.xyz | bash && foundryup`
+- Foundry CLI suite:
+  ```bash
+  curl -L https://foundry.paradigm.xyz | bash
+  foundryup
+  ```
 
-### Installation
+### 1. Install Dependencies
 ```bash
-# Clone the repository
 git clone https://github.com/your-username/ProvenanceChain.git
 cd ProvenanceChain
-
-# Install workspace dependencies
 npm install
 ```
 
-### Start Local Blockchain & Deploy
+### 2. Start the Local Blockchain Node (Anvil)
+Run Anvil with a 1-second continuous block time to auto-mine all transactions:
 ```bash
-# 1. Start Anvil in a background terminal
-~/.foundry/bin/anvil --port 8545 --host 0.0.0.0
+~/.foundry/bin/anvil --port 8545 --host 0.0.0.0 --block-time 1
+```
 
-# 2. Deploy smart contract & seed demo scenarios
+### 3. Deploy & Seed Smart Contract
+In a second terminal, seed the smart contract with demo roles, verified entities, and test batches:
+```bash
 npm run seed
 ```
 
-### Start Web Application
+### 4. Start the Web Application
 ```bash
-# Start Next.js development server
 npm run dev
-
-# Open in browser: http://localhost:3000
 ```
+Open **[http://localhost:3000](http://localhost:3000)** in your browser.
 
 ---
 
-## 5. Adding Networks to MetaMask
+## 6. Configuring MetaMask
 
-### A. Anvil Localhost (Local Development)
-- **Network Name**: `Anvil Localhost`
-- **Default RPC URL**: `http://localhost:3000/api/rpc` (or `http://127.0.0.1:8545`)
-- **Chain ID**: `31337`
-- **Currency Symbol**: `ETH`
+### Adding Anvil Localhost to MetaMask
+1. Open MetaMask &rarr; Click the **Network Selector** (top left).
+2. Click **Add Network** &rarr; **Add a network manually**.
+3. Fill in the network parameters:
+   - **Network Name**: `Anvil Localhost`
+   - **RPC URL**: `http://127.0.0.1:8545`
+   - **Chain ID**: `31337`
+   - **Currency Symbol**: `ETH`
+4. Click **Save** and switch to `Anvil Localhost`.
 
-### B. Base Sepolia (Public Testnet)
+### Adding Base Sepolia (Public Testnet)
 - **Network Name**: `Base Sepolia`
 - **RPC URL**: `https://sepolia.base.org`
 - **Chain ID**: `84532`
 - **Currency Symbol**: `ETH`
 - **Block Explorer URL**: `https://sepolia.basescan.org`
 
+> [!TIP]
+> **Resolving `nonce too low` in Local Development**:  
+> If you restart Anvil, MetaMask's internal transaction counter can get ahead of the chain.  
+> Fix in 5 seconds: In MetaMask &rarr; **Settings** &rarr; **`</> Developer tools`** &rarr; click **`Clear activity and nonce data`** &rarr; confirm.
+
 ---
 
-## 6. Pre-Funded Demo Wallets (Anvil)
+## 7. Pre-Funded Demo Wallets
 
-| Role | Entity Name | Address | Private Key |
+The seed script pre-funds and configures the following demo accounts on Anvil:
+
+| Role | Business Display Name | Address | Private Key |
 | :--- | :--- | :--- | :--- |
 | **Admin** | Platform Administrator | `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266` | `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80` |
 | **Producer** | Sidama Coffee Co-op | `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` | `0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d` |
 | **Distributor** | Addis Export Co. | `0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC` | `0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a` |
 | **Shop** | Roast & Co. | `0x90F79bf6EB2c4f870365E785982E1f101E93b906` | `0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6` |
 
-*(Import any of these private keys into MetaMask to test each role).*
+*(To test any role, open MetaMask &rarr; Import Account &rarr; paste the private key).*
 
 ---
 
-## 7. Core Demo Story (Under 2 Minutes)
+## 8. 2-Minute Demo Evaluation Guide
 
-1. **Scan Authentic Batch #1**:
-   - Open **[http://localhost:3000/v/1](http://localhost:3000/v/1)**.
-   - Result: 🟢 **VERIFIED AUTHENTIC** with 100% complete unbroken custody trail: *Sidama Coffee Co-op &rarr; Addis Export Co. &rarr; Roast & Co.*
-2. **Scan Caution Batch #2**:
-   - Open **[http://localhost:3000/v/2](http://localhost:3000/v/2)**.
-   - Result: 🟡 **CAUTION ADVISED** (batch is still at producer facility; has not reached verified retail shop).
-3. **Scan Recalled Batch #3**:
-   - Open **[http://localhost:3000/v/3](http://localhost:3000/v/3)**.
-   - Result: 🔴 **SAFETY ALERT: RECALLED** with official safety notice (*"Quality seal defect detected in packaging line 4B"*).
-4. **Scan Unregistered Code #999**:
-   - Open **[http://localhost:3000/v/999](http://localhost:3000/v/999)**.
-   - Result: 🔴 **COUNTERFEIT WARNING** (unrecognized batch ID on blockchain).
-5. **Create a Batch with MetaMask**:
-   - Connect MetaMask on Account #1 (Producer).
-   - Navigate to **[http://localhost:3000/producer](http://localhost:3000/producer)**.
-   - Enter batch details, confirm in MetaMask, download generated QR code label, and initiate handover to Addis Export Co.!
+### 1. Consumer Scan Explorer (No Wallet Needed)
+1. Open **[http://localhost:3000/v/1](http://localhost:3000/v/1)**:
+   - **Verdict**: 🟢 **VERIFIED AUTHENTIC**
+   - **Custody Audit Trail**: Exactly 3 immutable events (*Sidama Coffee Co-op &rarr; Addis Export Co. &rarr; Roast & Co.*).
+   - **Integrity**: *100% Complete Unbroken Custody*.
+2. Open **[http://localhost:3000/v/2](http://localhost:3000/v/2)**:
+   - **Verdict**: 🟡 **CAUTION ADVISED** (Product still held at producer facility).
+3. Open **[http://localhost:3000/v/3](http://localhost:3000/v/3)**:
+   - **Verdict**: 🔴 **PRODUCT RECALLED** with official safety notice (*"Quality seal defect detected in packaging line 4B"*).
+4. Open **[http://localhost:3000/v/999](http://localhost:3000/v/999)**:
+   - **Verdict**: 🔴 **COUNTERFEIT / NOT FOUND** (Batch does not exist on-chain).
+
+### 2. Supply Chain Lifecycle with MetaMask
+1. **Producer Portal (`/producer`)**:
+   - Connect MetaMask with a Producer account.
+   - Enter batch details: *"Organic Gesha Micro-Lot"*, Origin: *"Guji, Ethiopia"*, Units: `100`.
+   - Click **Sign in MetaMask & Register Batch**.
+   - Download the generated QR Code package label.
+   - Click **Send Onward**, choose **⚡ Direct Transfer**, select **Addis Export Co.**, and confirm.
+2. **Distributor Portal (`/distributor`)**:
+   - The batch is now in custody!
+   - Click **Dispatch Onward**, choose **⚡ Direct Transfer**, select **Roast & Co. (Shop)**, and confirm.
+3. **Retail Shop Portal (`/shop`)**:
+   - The batch is now in store inventory!
+   - Click **Mark Sold Out** and confirm.
+4. **Scan Again**:
+   - Open `/v/<yourBatchId>`: observe the complete 3-event unbroken custody timeline and authentic verdict.
+
+### 3. Platform Administration (`/admin`)
+- Connect with Admin wallet (`0xf39F...2266` or any assigned admin).
+- View the **Global Activity Feed**: inspect real-time statuses across all supply chain batches.
+- Click **Recall** on any batch to broadcast an on-chain safety recall.
 
 ---
 
-## 8. Why Blockchain? (And Why 2-Step Handover?)
+## 9. Design Decisions & Trade-Offs
 
 ### Why Blockchain?
-Centralized databases can be quietly updated, backdated, or purged by administrators or compromised credentials.
-- **Append-Only History**: Once a custody event is mined, it cannot be modified or reordered by any party.
-- **Public Verifiability**: Any consumer smartphone can independently verify product origin without trusting a proprietary API or vendor database.
-- **Separation of Trust**: Producers, export haulers, and retail shops do not need to share a database or trust one central server.
+Centralized databases (e.g. AWS RDS or Firebase) introduce single points of failure. Any administrator, corrupted script, or compromised database credential can silently overwrite records or alter timestamps. A smart contract guarantees:
+- **Append-Only Immutability**: Historical custody events cannot be deleted, edited, or reordered once mined.
+- **Decentralized Verification**: Consumers and regulatory bodies verify authenticity directly against the blockchain without trusting private APIs.
 
-### Why 2-Step Handover (`initiateTransfer` &rarr; `acceptTransfer`)?
-In supply chains, unilateral direct transfers allow a malicious sender to "dump" defective or hazardous inventory onto an unsuspecting recipient's address. 
-With **2-step handover**:
-1. Sender calls `initiateTransfer(batchId, recipient, location)` &rarr; sets `pendingHolder`.
-2. Goods are physically received and inspected.
-3. Recipient calls `acceptTransfer(batchId, location)` &rarr; updates `currentHolder` and appends the immutable custody event.
-4. Sender can call `cancelTransfer(batchId)` if shipment was rerouted before acceptance.
-
-*(Note: Direct transfer mode is also available via `transferCustody` for streamlined automated scenarios).*
+### Why 2-Step Handover vs Direct Handover?
+- **2-Step Handover (`initiateTransfer` &rarr; `acceptTransfer`)**:  
+  Prevents a malicious sender from dumping defective or hazardous inventory onto an unsuspecting recipient's address. The receiver must cryptographically acknowledge receipt before custody transfers.
+- **Direct Handover (`transferCustody`)**:  
+  Included for high-throughput automated scanning where physical barcode scanners or ERP integrations trigger instant custody handoffs.
 
 ---
 
-## 9. Known Limitations & Mitigation
+## 10. Test Suite
 
-- **Garbage In, Garbage Out**: The blockchain proves that a custody record was not altered after entry; it does not prove that the initial physical batch was genuine.
-  - *Mitigation*: Restrict `PRODUCER_ROLE` strictly to vetted and audited organizations.
-- **Physical Package Clones**: Counterfeiters could duplicate physical QR codes.
-  - *Mitigation*: Physical tamper-evident holographic seals and single-scan velocity checks.
+Run the full automated test suite covering smart contracts, shared cryptographic utilities, and browser flows:
 
----
-
-## 10. Verification & Test Suite
-
-Run all tests across contracts, shared types, and end-to-end browser flows:
 ```bash
-# Run complete test suite
+# 1. Run all tests
 npm test
 
-# Run contract tests only (Forge)
+# 2. Run smart contract unit + fuzz tests (Foundry)
 npm run test:contracts
 
-# Run Playwright E2E browser tests
+# 3. Run shared Merkle/cryptographic package tests (Vitest)
+npm run test:shared
+
+# 4. Run browser end-to-end tests (Playwright)
 npm run test:e2e
 ```

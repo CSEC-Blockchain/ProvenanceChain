@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useAccount, useConnect } from 'wagmi';
 import { injected } from '@wagmi/connectors/injected';
 import { Navbar } from '@/components/Navbar';
@@ -19,6 +20,10 @@ import {
   Building,
   Tag,
   Key,
+  Boxes,
+  Activity,
+  ExternalLink,
+  AlertTriangle,
 } from 'lucide-react';
 import { encodeFunctionData, keccak256, toHex, type Hex } from 'viem';
 import { sendMetaMaskTransaction } from '@/lib/wallet';
@@ -27,6 +32,21 @@ interface RegisteredEntity {
   address: string;
   role: string;
   displayName: string;
+}
+
+interface GlobalBatch {
+  id: number;
+  productName: string;
+  origin: string;
+  unitCount: number;
+  producer: string;
+  producerName: string;
+  currentHolder: string;
+  currentHolderName: string;
+  pendingHolder: string;
+  status: number;
+  createdAt: number;
+  eventCount: number;
 }
 
 export default function AdminPage() {
@@ -48,12 +68,15 @@ export default function AdminPage() {
   // Known entities registry table
   const [entities, setEntities] = useState<RegisteredEntity[]>([]);
 
+  // Supply Chain Global Activities
+  const [globalBatches, setGlobalBatches] = useState<GlobalBatch[]>([]);
+
   const defaultKnownAddresses = [
     { address: '0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266', label: 'Anvil Admin Account #0' },
     { address: '0x70997970C51812dc3A010C7d01b50e0d17dc79C8', label: 'Anvil Account #1 (Sidama Coffee)' },
     { address: '0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC', label: 'Anvil Account #2 (Addis Export Co)' },
     { address: '0x90F79bf6EB2c4f870365E785982E1f101E93b906', label: 'Anvil Account #3 (Roast & Co)' },
-    { address: '0x6411585ce9378c91b6926b85c761f902c4443fbf', label: 'User MetaMask Account' },
+    { address: '0x6411585cE9370C91B6926B85C761f902C4443fbF', label: 'User MetaMask Account' },
   ];
 
   async function loadAdminData() {
@@ -101,6 +124,70 @@ export default function AdminPage() {
         } catch {}
       }
       setEntities(list);
+
+      // Load all supply chain batches and activities
+      try {
+        const total = (await publicClient.readContract({
+          address: contractAddress,
+          abi: ProvenanceRegistryABI,
+          functionName: 'batchCount',
+        })) as bigint;
+
+        const count = Number(total);
+        const batches: GlobalBatch[] = [];
+
+        for (let i = 1; i <= count; i++) {
+          try {
+            const b: any = await publicClient.readContract({
+              address: contractAddress,
+              abi: ProvenanceRegistryABI,
+              functionName: 'getBatch',
+              args: [BigInt(i)],
+            });
+
+            const hist: any = await publicClient.readContract({
+              address: contractAddress,
+              abi: ProvenanceRegistryABI,
+              functionName: 'getHistory',
+              args: [BigInt(i)],
+            });
+
+            const pName: string = (await publicClient.readContract({
+              address: contractAddress,
+              abi: ProvenanceRegistryABI,
+              functionName: 'displayName',
+              args: [b.producer as Hex],
+            })) as string;
+
+            const hName: string = (await publicClient.readContract({
+              address: contractAddress,
+              abi: ProvenanceRegistryABI,
+              functionName: 'displayName',
+              args: [b.currentHolder as Hex],
+            })) as string;
+
+            batches.push({
+              id: Number(b.id),
+              productName: b.productName,
+              origin: b.origin,
+              unitCount: Number(b.unitCount),
+              producer: b.producer,
+              producerName: pName || 'Producer',
+              currentHolder: b.currentHolder,
+              currentHolderName: hName || 'Holder',
+              pendingHolder: b.pendingHolder,
+              status: Number(b.status),
+              createdAt: Number(b.createdAt),
+              eventCount: Array.isArray(hist) ? hist.length : 1,
+            });
+          } catch {}
+        }
+
+        // Show newest batches first
+        setGlobalBatches(batches.reverse());
+      } catch (batchErr) {
+        console.warn('Failed to load global batches:', batchErr);
+      }
     } catch (e) {
       console.warn(e);
     } finally {
@@ -194,9 +281,48 @@ export default function AdminPage() {
       setActiveStep('mining');
       await publicClient.waitForTransactionReceipt({ hash: hash as Hex });
       setActiveStep('done');
+      await loadAdminData();
     } catch (err: any) {
       console.error(err);
       setError(err?.message || 'Revoke role failed');
+      setActiveStep('idle');
+    }
+  }
+
+  // Emergency Safety Recall
+  async function handleRecallBatch(batchId: number) {
+    if (!address || typeof window === 'undefined') return;
+    const reason = window.prompt(
+      `Enter safety recall notice for Batch #${batchId}:`,
+      'Safety quality inspection failure'
+    );
+    if (!reason || !reason.trim()) return;
+
+    setError(null);
+    setActiveStep('metamask');
+
+    try {
+      const contractAddress = getContractAddress();
+      const calldata = encodeFunctionData({
+        abi: ProvenanceRegistryABI,
+        functionName: 'recallBatch',
+        args: [BigInt(batchId), reason.trim()],
+      });
+
+      const hash = await sendMetaMaskTransaction({
+        to: contractAddress as Hex,
+        data: calldata,
+        from: address as Hex,
+      });
+
+      setActiveStep('mining');
+      await publicClient.waitForTransactionReceipt({ hash: hash as Hex });
+      setStatusMessage(`Batch #${batchId} has been officially RECALLED on-chain.`);
+      setActiveStep('done');
+      await loadAdminData();
+    } catch (err: any) {
+      console.error(err);
+      setError(err?.message || 'Recall batch failed');
       setActiveStep('idle');
     }
   }
@@ -374,6 +500,106 @@ export default function AdminPage() {
                   ))}
                 </div>
               </div>
+            </div>
+
+            {/* Global Supply Chain Activities Section */}
+            <div className="lg:col-span-12 rounded-2xl border border-slate-200 bg-white p-6 shadow-xs space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-purple-600" />
+                  <div>
+                    <h2 className="text-base font-bold text-slate-900">
+                      Supply Chain Global Activity Feed ({globalBatches.length})
+                    </h2>
+                    <p className="text-xs text-slate-500">
+                      Real-time visibility across all registered batches, active handovers, and retail stock.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {globalBatches.length === 0 ? (
+                <div className="py-8 text-center text-xs text-slate-500">
+                  <Boxes className="mx-auto h-8 w-8 text-slate-300 mb-2" />
+                  No batches have been registered on-chain yet.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200">
+                  {globalBatches.map((b) => {
+                    const isPending = b.pendingHolder !== '0x0000000000000000000000000000000000000000';
+                    return (
+                      <div
+                        key={b.id}
+                        className="p-4 bg-white hover:bg-slate-50/70 transition flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-900 text-sm">
+                              Batch #{b.id}: {b.productName}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
+                                b.status === 1
+                                  ? 'bg-rose-100 text-rose-800'
+                                  : b.status === 2
+                                  ? 'bg-slate-200 text-slate-700'
+                                  : isPending
+                                  ? 'bg-amber-100 text-amber-800'
+                                  : 'bg-emerald-100 text-emerald-800'
+                              }`}
+                            >
+                              {b.status === 1
+                                ? 'Recalled'
+                                : b.status === 2
+                                ? 'Sold Out'
+                                : isPending
+                                ? 'In Transit'
+                                : 'Active'}
+                            </span>
+                            <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                              {b.eventCount} Custody Event{b.eventCount > 1 ? 's' : ''}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                            <span>
+                              <strong>Producer:</strong> {b.producerName} ({b.origin})
+                            </span>
+                            <span>&bull;</span>
+                            <span>
+                              <strong>Current Custody:</strong> {b.currentHolderName}
+                            </span>
+                            <span>&bull;</span>
+                            <span>
+                              <strong>Units:</strong> {b.unitCount}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Link
+                            href={`/v/${b.id}`}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-xs hover:bg-slate-100 transition"
+                          >
+                            <span>Inspect Scan</span>
+                            <ExternalLink className="h-3 w-3" />
+                          </Link>
+
+                          {b.status === 0 && (
+                            <button
+                              onClick={() => handleRecallBatch(b.id)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-semibold text-rose-700 shadow-xs hover:bg-rose-100 transition"
+                            >
+                              <AlertTriangle className="h-3 w-3" />
+                              <span>Recall</span>
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
