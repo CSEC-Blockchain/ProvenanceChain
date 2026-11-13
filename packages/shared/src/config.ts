@@ -21,7 +21,7 @@ export const CONTRACT_ADDRESSES: Record<number, `0x${string}`> = {
 
 export function getContractAddress(chainId?: number): `0x${string}` {
   const envAddr = typeof process !== 'undefined' ? process.env?.NEXT_PUBLIC_CONTRACT_ADDRESS : undefined;
-  if (envAddr && envAddr.startsWith('0x')) {
+  if (envAddr && typeof envAddr === 'string' && envAddr.startsWith('0x')) {
     return envAddr as `0x${string}`;
   }
   if (chainId && CONTRACT_ADDRESSES[chainId]) {

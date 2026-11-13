@@ -101,7 +101,7 @@ export function Navbar() {
               <Link
                 href="/v/1"
                 className={`rounded-lg px-3 py-1.5 transition ${
-                  pathname.startsWith('/v/')
+                  pathname && typeof pathname === 'string' && pathname.startsWith('/v/')
                     ? 'bg-slate-100 text-slate-900'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}

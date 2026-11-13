@@ -9,8 +9,8 @@ export const publicClient = createPublicClient({
 
 export function getContractAddress(): `0x${string}` {
   const addr = process.env.NEXT_PUBLIC_CONTRACT_ADDRESS;
-  if (!addr || !addr.startsWith('0x')) {
-    return '0xb7f8bc63bbcad18155201308c8f3540b07f84f5e';
+  if (!addr || typeof addr !== 'string' || !addr.startsWith('0x')) {
+    return '0x5fbdb2315678afecb367f032d93f642f64180aa3';
   }
   return addr as `0x${string}`;
 }
