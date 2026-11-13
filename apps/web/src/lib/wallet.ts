@@ -44,17 +44,47 @@ export async function sendMetaMaskTransaction({
 
   const sender = from || (accounts[0] as Hex);
 
-  const hash: Hex = await provider.request({
-    method: 'eth_sendTransaction',
-    params: [
-      {
-        from: sender,
-        to,
-        data,
-      },
-    ],
-  });
+  // Read current on-chain nonce directly to keep MetaMask perfectly synced with Anvil
+  let nonceHex: string | undefined = undefined;
+  try {
+    nonceHex = await provider.request({
+      method: 'eth_getTransactionCount',
+      params: [sender, 'pending'],
+    });
+  } catch (err) {
+    console.warn('Could not read nonce via eth_getTransactionCount, using default:', err);
+  }
 
-  return hash;
+  const txParams: Record<string, any> = {
+    from: sender,
+    to,
+    data,
+  };
+
+  if (nonceHex) {
+    txParams.nonce = nonceHex;
+  }
+
+  try {
+    const hash: Hex = await provider.request({
+      method: 'eth_sendTransaction',
+      params: [txParams],
+    });
+    return hash;
+  } catch (error: any) {
+    // If a nonce desync happens, retry once with 'latest' block nonce
+    if (error?.message && error.message.toLowerCase().includes('nonce')) {
+      const fallbackNonce: string = await provider.request({
+        method: 'eth_getTransactionCount',
+        params: [sender, 'latest'],
+      });
+      txParams.nonce = fallbackNonce;
+      const retryHash: Hex = await provider.request({
+        method: 'eth_sendTransaction',
+        params: [txParams],
+      });
+      return retryHash;
+    }
+    throw error;
+  }
 }
-
