@@ -24,7 +24,7 @@ export const CONTRACT_ADDRESSES: Record<number, `0x${string}`> = {
   // Base Sepolia default placeholder
   84532: '0x5fbdb2315678afecb367f032d93f642f64180aa3',
   // Ethereum Sepolia deployed address
-  11155111: '0x2746f2f4a94dff0a0eda7deb38446d650a9fb1a8',
+  11155111: '0x2233de21599201a5674f8c54505f162373478a13',
 };
 
 export function getContractAddress(chainId?: number): `0x${string}` {

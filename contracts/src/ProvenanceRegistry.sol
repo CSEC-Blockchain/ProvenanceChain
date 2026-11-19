@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/utils/cryptography/MerkleProof.sol";
 
 /**
  * @title ProvenanceRegistry
@@ -16,6 +17,7 @@ contract ProvenanceRegistry is AccessControl, Pausable {
     bytes32 public constant PRODUCER_ROLE = keccak256("PRODUCER_ROLE");
     bytes32 public constant DISTRIBUTOR_ROLE = keccak256("DISTRIBUTOR_ROLE");
     bytes32 public constant SHOP_ROLE = keccak256("SHOP_ROLE");
+    bytes32 public constant RELAYER_ROLE = keccak256("RELAYER_ROLE");
 
     // -------------------------------------------------------------------------
     // Handover Mode Configuration
@@ -44,6 +46,7 @@ contract ProvenanceRegistry is AccessControl, Pausable {
         uint32 unitCount;
         uint64 createdAt;
         BatchStatus status;
+        bytes32 unitsRoot;
     }
 
     struct CustodyEvent {
@@ -60,6 +63,7 @@ contract ProvenanceRegistry is AccessControl, Pausable {
 
     mapping(uint256 => Batch) private _batches;
     mapping(uint256 => CustodyEvent[]) private _history;
+    mapping(uint256 => mapping(uint32 => uint64)) private _claimedAt;
 
     /// @notice Human-readable name for each registered business entity (set by ADMIN)
     mapping(address => string) public displayName;
@@ -77,6 +81,9 @@ contract ProvenanceRegistry is AccessControl, Pausable {
     error InvalidPath(address from, address to);
     error InvalidUnitCount();
     error EmptyString();
+    error UnitAlreadyClaimed(uint256 batchId, uint32 serial);
+    error InvalidProof();
+    error ZeroUnitsRoot();
 
     // -------------------------------------------------------------------------
     // Events
@@ -108,6 +115,12 @@ contract ProvenanceRegistry is AccessControl, Pausable {
     );
     event BatchRecalled(uint256 indexed batchId, address indexed caller, string reason);
     event BatchSoldOut(uint256 indexed batchId, address indexed shop);
+    event UnitClaimed(
+        uint256 indexed batchId,
+        uint32 indexed serial,
+        address indexed relayer,
+        uint64 timestamp
+    );
 
     // -------------------------------------------------------------------------
     // Constructor
@@ -115,6 +128,8 @@ contract ProvenanceRegistry is AccessControl, Pausable {
     constructor(address admin) {
         if (admin == address(0)) revert InvalidRecipient(address(0));
         _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(PRODUCER_ROLE, admin);
+        _grantRole(RELAYER_ROLE, admin);
     }
 
     // -------------------------------------------------------------------------
@@ -144,15 +159,16 @@ contract ProvenanceRegistry is AccessControl, Pausable {
     // Producer Functions
     // -------------------------------------------------------------------------
     /**
-     * @notice Creates a new product batch with permanent on-chain custody record.
+     * @notice Creates a new product batch with permanent on-chain custody record and optional Merkle unitsRoot.
      */
     function createBatch(
         string calldata productName,
         string calldata origin,
         bytes32 metadataHash,
         uint32 unitCount,
-        string calldata location
-    ) external onlyRole(PRODUCER_ROLE) whenNotPaused returns (uint256) {
+        string calldata location,
+        bytes32 unitsRoot
+    ) public onlyRole(PRODUCER_ROLE) whenNotPaused returns (uint256) {
         if (unitCount == 0) revert InvalidUnitCount();
         if (bytes(productName).length == 0 || bytes(origin).length == 0) revert EmptyString();
 
@@ -170,7 +186,8 @@ contract ProvenanceRegistry is AccessControl, Pausable {
             metadataHash: metadataHash,
             unitCount: unitCount,
             createdAt: nowTs,
-            status: BatchStatus.Active
+            status: BatchStatus.Active,
+            unitsRoot: unitsRoot
         });
 
         // First custody event: mint from address(0) to producer
@@ -200,6 +217,19 @@ contract ProvenanceRegistry is AccessControl, Pausable {
         );
 
         return batchId;
+    }
+
+    /**
+     * @notice Overload for backward compatibility without unit codes.
+     */
+    function createBatch(
+        string calldata productName,
+        string calldata origin,
+        bytes32 metadataHash,
+        uint32 unitCount,
+        string calldata location
+    ) external returns (uint256) {
+        return createBatch(productName, origin, metadataHash, unitCount, location, bytes32(0));
     }
 
     // -------------------------------------------------------------------------
@@ -367,6 +397,62 @@ contract ProvenanceRegistry is AccessControl, Pausable {
         if (hasRole(DISTRIBUTOR_ROLE, account)) return "DISTRIBUTOR";
         if (hasRole(SHOP_ROLE, account)) return "SHOP";
         return "NONE";
+    }
+
+    // -------------------------------------------------------------------------
+    // Phase 2: Anti-Copy Unit Claim & Verification
+    // -------------------------------------------------------------------------
+    /**
+     * @notice Claims a physical unit using consumer-revealed secret proof submitted via authorized relayer.
+     */
+    function claimUnit(
+        uint256 batchId,
+        uint32 serial,
+        bytes32 secretHash,
+        bytes32[] calldata proof
+    ) external onlyRole(RELAYER_ROLE) whenNotPaused {
+        Batch storage batch = _batches[batchId];
+        if (batch.id == 0) revert BatchNotFound(batchId);
+        if (batch.status != BatchStatus.Active) revert BatchNotActive(batchId, batch.status);
+        if (_claimedAt[batchId][serial] != 0) revert UnitAlreadyClaimed(batchId, serial);
+        if (batch.unitsRoot == bytes32(0)) revert ZeroUnitsRoot();
+
+        bytes32 leaf = keccak256(abi.encodePacked(batchId, serial, secretHash));
+        if (!MerkleProof.verify(proof, batch.unitsRoot, leaf)) revert InvalidProof();
+
+        uint64 nowTs = uint64(block.timestamp);
+        _claimedAt[batchId][serial] = nowTs;
+
+        emit UnitClaimed(batchId, serial, msg.sender, nowTs);
+    }
+
+    /**
+     * @notice Returns whether a specific unit has already been claimed on-chain.
+     */
+    function isClaimed(uint256 batchId, uint32 serial) external view returns (bool) {
+        return _claimedAt[batchId][serial] != 0;
+    }
+
+    /**
+     * @notice Returns the timestamp when the unit was claimed (or 0 if unclaimed).
+     */
+    function claimedAt(uint256 batchId, uint32 serial) external view returns (uint64) {
+        return _claimedAt[batchId][serial];
+    }
+
+    /**
+     * @notice Verifies a unit secret against the on-chain Merkle root without claiming it.
+     */
+    function verifyUnit(
+        uint256 batchId,
+        uint32 serial,
+        bytes32 secretHash,
+        bytes32[] calldata proof
+    ) external view returns (bool) {
+        Batch storage batch = _batches[batchId];
+        if (batch.id == 0 || batch.unitsRoot == bytes32(0)) return false;
+        bytes32 leaf = keccak256(abi.encodePacked(batchId, serial, secretHash));
+        return MerkleProof.verify(proof, batch.unitsRoot, leaf);
     }
 
     // -------------------------------------------------------------------------

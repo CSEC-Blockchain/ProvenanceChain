@@ -20,3 +20,13 @@ body {
   }
 }
 
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  header, nav, button, a {
+    display: none !important;
+  }
+}
+

@@ -39,11 +39,11 @@ ProvenanceChain is deployed on **Ethereum Sepolia Testnet**:
 | Parameter | Value |
 | :--- | :--- |
 | **Live Web App (Vercel)** | [https://provenance-chain-mu.vercel.app](https://provenance-chain-mu.vercel.app) |
-| **Smart Contract Address** | [`0x2746f2f4a94dff0a0eda7deb38446d650a9fb1a8`](https://sepolia.etherscan.io/address/0x2746f2f4a94dff0a0eda7deb38446d650a9fb1a8) |
+| **Smart Contract Address** | [`0x2233de21599201a5674f8c54505f162373478a13`](https://sepolia.etherscan.io/address/0x2233de21599201a5674f8c54505f162373478a13) |
 | **Network Name** | Ethereum Sepolia Testnet |
 | **Chain ID** | `11155111` |
 | **Root Admin Account** | `0x6411585cE9370C91B6926B85C761f902C4443fbF` |
-| **Block Explorer** | [Etherscan Sepolia](https://sepolia.etherscan.io/address/0x2746f2f4a94dff0a0eda7deb38446d650a9fb1a8) |
+| **Block Explorer** | [Etherscan Sepolia](https://sepolia.etherscan.io/address/0x2233de21599201a5674f8c54505f162373478a13) |
 
 > [!NOTE]
 > **Connecting via MetaMask**: Switch your MetaMask wallet to the **Sepolia** network (Chain ID: `11155111`). When connecting with the root deployer account (`0x6411...3fbF`), the application automatically detects and displays your **`ADMIN`** role badge in the navigation header and unlocks the `/admin` portal.
@@ -223,7 +223,58 @@ The seed script pre-funds and configures the following demo accounts on Anvil:
 
 ---
 
-## 9. Design Decisions & Trade-Offs
+## 9. Phase 2: Anti-Copy Unit Codes (Cryptographic Scratch-Offs)
+
+In supply chain tracking, batch-level QR codes can be photographed in a store and printed onto counterfeit packaging. Phase 2 introduces individual unit-level codes backed by **cryptographic Merkle trees** and physical **scratch-off seals**.
+
+### 1. Threat Model & Guarantees
+- **What scratch-offs prevent**:
+  - **QR Code Cloning**: A counterfeiter photographing the exterior packaging QR code cannot create an authentic duplicate, because they do not possess the concealed 128-bit secret hidden beneath the opaque scratch layer.
+  - **Double-Claim / Reused Packaging**: If a counterfeit copy is created using a previously claimed secret, the on-chain claim check immediately flags the unit as `ALREADY CLAIMED ON <DATE>`, warning the buyer.
+- **What scratch-offs DO NOT prevent**:
+  - **Packaging Destruction / Theft**: Scratch-off seals do not physically prevent someone from tearing open a box or stealing units from a warehouse.
+  - **Negligent Consumers**: If a buyer fails to inspect the scratch-off layer or ignores an already-scratched silver foil, the counterfeit cannot be detected purely by software.
+
+### 2. Cryptographic Architecture
+- Each unit possesses:
+  - `serial`: A numeric sequence identifier (`uint32`).
+  - `secret`: An unguessable 128-bit random token printed under the scratch layer.
+  - `secretHash`: `keccak256(secret)`.
+  - `leaf`: `keccak256(abi.encodePacked(batchId, serial, secretHash))`.
+- **On-Chain Commitment**: The producer computes a Merkle tree over all unit leaves in the browser. Only the 32-byte `unitsRoot` is committed to the blockchain inside `createBatch`.
+- **Zero Secrets on Server**: The raw secrets are generated purely client-side and printed onto packaging labels. The server never stores secrets. Only Merkle proofs are cached in an off-chain database to facilitate gasless claims.
+- **URL Fragment Privacy**: The consumer scratch link is formatted as:
+  `https://<host>/claim/<batchId>/<serial>#<secret>`
+  Because `#<secret>` is a URL hash fragment, standard web browsers **never transmit the secret in HTTP request headers or server logs**. The secret is read purely in client JavaScript.
+
+### 3. Gasless Consumer Claiming & Relayer Model
+- **Gasless UX**: Consumers scratch the seal and verify their product with zero crypto, zero wallet, and zero transaction fees.
+- **Relayer Role (`RELAYER_ROLE`)**: The relayer receives the secret from the consumer, hashes it, retrieves the Merkle proof, and submits `claimUnit(batchId, serial, secretHash, proof)` to Ethereum.
+- **Trust Assumption**: The consumer sends the scratch secret to the relayer over TLS once at claim time. The relayer submits the transaction on-chain. Because the claim transaction permanently marks `claimed[batchId][serial] = timestamp` in the same block, the secret is immediately rendered invalid for any future claim.
+
+### 4. Scan Analytics & Anomaly Detection
+- The public scan endpoint `/u/<batchId>/<serial>` records every visit with a salted SHA-256 IP hash and geographic region.
+- If a unit experiences **more than 20 scans** or scans originating from **3 or more distinct countries**, the application displays a prominent **`CAUTION: UNUSUAL SCAN ACTIVITY`** alert, warning consumers of potential QR duplication.
+
+### 5. Demo Walkthrough Script
+1. **Producer registers batch with anti-copy units**:
+   - Go to `/producer`, enter batch info (e.g. 5 units).
+   - Sign transaction in MetaMask.
+   - Upon confirmation, the **Anti-Copy Print Sheet** modal opens with printable outer QRs and scratch-off QRs for all 5 units.
+   - Download the print sheet JSON or click Print.
+2. **Consumer scans public outer QR**:
+   - Open `/u/1/0`: Observe unit passport, status `Unclaimed & Sealed`, and unbroken custody chain.
+3. **Consumer scratches code and claims**:
+   - Open the claim link `/claim/1/0#<secret>`.
+   - Click **Claim & Verify Authenticity On-Chain**.
+   - The relayer submits the transaction, and the screen turns green: ✅ **Authentic & Genuine Product! First-Time Verification**.
+4. **Duplicate claim attempt**:
+   - Re-open `/claim/1/0#<secret>`.
+   - The screen shows ⚠️ **Already Verified Previously on <Date>** warning.
+
+---
+
+## 10. Design Decisions & Trade-Offs
 
 ### Why Blockchain?
 Centralized databases (e.g. AWS RDS or Firebase) introduce single points of failure. Any administrator, corrupted script, or compromised database credential can silently overwrite records or alter timestamps. A smart contract guarantees:
@@ -238,7 +289,7 @@ Centralized databases (e.g. AWS RDS or Firebase) introduce single points of fail
 
 ---
 
-## 10. Test Suite
+## 11. Test Suite
 
 Run the full automated test suite covering smart contracts, shared cryptographic utilities, and browser flows:
 

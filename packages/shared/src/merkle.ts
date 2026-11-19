@@ -1,16 +1,40 @@
 import { encodePacked, keccak256, type Hex } from 'viem';
-import * as crypto from 'crypto';
 
 /**
- * Generates an unguessable 128-bit (16-byte) random token represented as a 32-character hex string.
- * Used on physical unit QR codes.
+ * Generates an unguessable 128-bit (16-byte) random secret represented as a 32-character hex string.
+ * Printed under the scratch-off layer on the package.
+ * Works seamlessly in both browser and Node.js environments.
  */
-export function generateUnitToken(): string {
-  return crypto.randomBytes(16).toString('hex');
+export function generateUnitSecret(): string {
+  if (typeof globalThis !== 'undefined' && globalThis.crypto && typeof globalThis.crypto.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    globalThis.crypto.getRandomValues(bytes);
+    return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  // Node.js fallback
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const nodeCrypto = require('crypto');
+  return nodeCrypto.randomBytes(16).toString('hex');
 }
 
 /**
- * Formats a unit token (128-bit / 32 hex chars, or 64 hex chars) into an EVM bytes32 value.
+ * Backward compatibility alias for generateUnitSecret.
+ */
+export const generateUnitToken = generateUnitSecret;
+
+/**
+ * Computes keccak256(secret) for the 128-bit secret.
+ */
+export function computeSecretHash(secret: string): Hex {
+  let clean = secret.trim().toLowerCase();
+  if (!clean.startsWith('0x')) {
+    clean = `0x${clean}`;
+  }
+  return keccak256(clean as Hex);
+}
+
+/**
+ * Formats a unit token/secret into an EVM bytes32 value.
  */
 export function tokenToBytes32(token: string): Hex {
   let clean = token.toLowerCase();
@@ -24,17 +48,17 @@ export function tokenToBytes32(token: string): Hex {
 
 /**
  * Computes the keccak256 leaf hash for a unit in a batch:
- * Leaf = keccak256(abi.encodePacked(uint256 batchId, uint32 serial, bytes32 token))
+ * Leaf = keccak256(abi.encodePacked(uint256 batchId, uint32 serial, bytes32 secretHash))
  */
 export function computeUnitLeaf(
   batchId: bigint | number,
   serial: number,
-  tokenBytes32: Hex
+  secretHash: Hex
 ): Hex {
   return keccak256(
     encodePacked(
       ['uint256', 'uint32', 'bytes32'],
-      [BigInt(batchId), serial, tokenBytes32]
+      [BigInt(batchId), serial, secretHash]
     )
   );
 }
@@ -130,8 +154,10 @@ export function verifyMerkleProof(root: Hex, leaf: Hex, proof: Hex[]): boolean {
 
 export interface GeneratedUnit {
   serial: number;
-  token: string;
-  tokenBytes32: Hex;
+  secret: string;
+  secretHash: Hex;
+  token?: string;
+  tokenBytes32?: Hex;
   leaf: Hex;
   proof: Hex[];
 }
@@ -154,22 +180,22 @@ export function generateBatchUnits(
 
   const unitsData: Array<{
     serial: number;
-    token: string;
-    tokenBytes32: Hex;
+    secret: string;
+    secretHash: Hex;
     leaf: Hex;
   }> = [];
 
   const leaves: Hex[] = [];
 
   for (let serial = 0; serial < count; serial++) {
-    const token = generateUnitToken();
-    const tokenBytes32 = tokenToBytes32(token);
-    const leaf = computeUnitLeaf(batchId, serial, tokenBytes32);
+    const secret = generateUnitSecret();
+    const secretHash = computeSecretHash(secret);
+    const leaf = computeUnitLeaf(batchId, serial, secretHash);
 
     unitsData.push({
       serial,
-      token,
-      tokenBytes32,
+      secret,
+      secretHash,
       leaf,
     });
     leaves.push(leaf);
@@ -179,6 +205,8 @@ export function generateBatchUnits(
 
   const units: GeneratedUnit[] = unitsData.map((u, i) => ({
     ...u,
+    token: u.secret,
+    tokenBytes32: u.secretHash,
     proof: proofs[i],
   }));
 

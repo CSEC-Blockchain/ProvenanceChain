@@ -64,6 +64,19 @@ export const ProvenanceRegistryABI = [
   },
   {
     "type": "function",
+    "name": "RELAYER_ROLE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "SHOP_ROLE",
     "inputs": [],
     "outputs": [
@@ -121,6 +134,58 @@ export const ProvenanceRegistryABI = [
   },
   {
     "type": "function",
+    "name": "claimUnit",
+    "inputs": [
+      {
+        "name": "batchId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "serial",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "secretHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "proof",
+        "type": "bytes32[]",
+        "internalType": "bytes32[]"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "claimedAt",
+    "inputs": [
+      {
+        "name": "batchId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "serial",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "createBatch",
     "inputs": [
       {
@@ -147,6 +212,50 @@ export const ProvenanceRegistryABI = [
         "name": "location",
         "type": "string",
         "internalType": "string"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createBatch",
+    "inputs": [
+      {
+        "name": "productName",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "origin",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "metadataHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "unitCount",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "location",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "unitsRoot",
+        "type": "bytes32",
+        "internalType": "bytes32"
       }
     ],
     "outputs": [
@@ -242,6 +351,11 @@ export const ProvenanceRegistryABI = [
             "name": "status",
             "type": "uint8",
             "internalType": "enum ProvenanceRegistry.BatchStatus"
+          },
+          {
+            "name": "unitsRoot",
+            "type": "bytes32",
+            "internalType": "bytes32"
           }
         ]
       }
@@ -391,6 +505,30 @@ export const ProvenanceRegistryABI = [
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "isClaimed",
+    "inputs": [
+      {
+        "name": "batchId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "serial",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -545,6 +683,40 @@ export const ProvenanceRegistryABI = [
     "inputs": [],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "verifyUnit",
+    "inputs": [
+      {
+        "name": "batchId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "serial",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "secretHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "proof",
+        "type": "bytes32[]",
+        "internalType": "bytes32[]"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "event",
@@ -841,6 +1013,37 @@ export const ProvenanceRegistryABI = [
   },
   {
     "type": "event",
+    "name": "UnitClaimed",
+    "inputs": [
+      {
+        "name": "batchId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "serial",
+        "type": "uint32",
+        "indexed": true,
+        "internalType": "uint32"
+      },
+      {
+        "name": "relayer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "timestamp",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "Unpaused",
     "inputs": [
       {
@@ -944,6 +1147,11 @@ export const ProvenanceRegistryABI = [
   },
   {
     "type": "error",
+    "name": "InvalidProof",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidRecipient",
     "inputs": [
       {
@@ -995,5 +1203,26 @@ export const ProvenanceRegistryABI = [
         "internalType": "address"
       }
     ]
+  },
+  {
+    "type": "error",
+    "name": "UnitAlreadyClaimed",
+    "inputs": [
+      {
+        "name": "batchId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "serial",
+        "type": "uint32",
+        "internalType": "uint32"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ZeroUnitsRoot",
+    "inputs": []
   }
 ] as const;

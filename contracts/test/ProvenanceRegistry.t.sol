@@ -11,6 +11,7 @@ contract ProvenanceRegistryTest is Test {
     address public producer = address(0xB01);
     address public distributor = address(0xD01);
     address public shop = address(0x501);
+    address public relayer = address(0x777);
     address public randomUser = address(0x999);
 
     bytes32 public constant TEST_HASH = keccak256("batch-test-metadata");
@@ -49,6 +50,7 @@ contract ProvenanceRegistryTest is Test {
         registry.grantRole(registry.PRODUCER_ROLE(), producer);
         registry.grantRole(registry.DISTRIBUTOR_ROLE(), distributor);
         registry.grantRole(registry.SHOP_ROLE(), shop);
+        registry.grantRole(registry.RELAYER_ROLE(), relayer);
 
         // Set human-readable display names
         registry.setDisplayName(producer, "Sidama Coffee Co-op");
@@ -374,5 +376,205 @@ contract ProvenanceRegistryTest is Test {
         vm.prank(caller);
         vm.expectRevert();
         registry.initiateTransfer(id, recipient, "Location");
+    }
+
+    // -------------------------------------------------------------------------
+    // 10. Phase 2: Anti-Copy Unit Verification & Claim Tests
+    // -------------------------------------------------------------------------
+    function _hashPair(bytes32 a, bytes32 b) internal pure returns (bytes32) {
+        return a < b ? keccak256(abi.encodePacked(a, b)) : keccak256(abi.encodePacked(b, a));
+    }
+
+    function _setupBatchWithUnits(uint32 count) internal returns (
+        uint256 batchId,
+        bytes32[] memory secrets,
+        bytes32[] memory secretHashes,
+        bytes32[] memory leaves,
+        bytes32 unitsRoot
+    ) {
+        require(count == 2, "Helper currently generates 2 units");
+        secrets = new bytes32[](2);
+        secretHashes = new bytes32[](2);
+        leaves = new bytes32[](2);
+
+        secrets[0] = keccak256("secret_unit_0");
+        secrets[1] = keccak256("secret_unit_1");
+        secretHashes[0] = keccak256(abi.encodePacked(secrets[0]));
+        secretHashes[1] = keccak256(abi.encodePacked(secrets[1]));
+
+        vm.prank(producer);
+        // We know this will be batchId 1
+        batchId = 1;
+        leaves[0] = keccak256(abi.encodePacked(batchId, uint32(0), secretHashes[0]));
+        leaves[1] = keccak256(abi.encodePacked(batchId, uint32(1), secretHashes[1]));
+        unitsRoot = _hashPair(leaves[0], leaves[1]);
+
+        uint256 id = registry.createBatch(
+            "Organic Specialty Lot",
+            "Yirgacheffe, Ethiopia",
+            TEST_HASH,
+            count,
+            "Washing Station",
+            unitsRoot
+        );
+        assertEq(id, batchId);
+    }
+
+    function test_ClaimUnit_HappyPath() public {
+        (
+            uint256 batchId,
+            ,
+            bytes32[] memory secretHashes,
+            bytes32[] memory leaves,
+            
+        ) = _setupBatchWithUnits(2);
+
+        bytes32[] memory proof0 = new bytes32[](1);
+        proof0[0] = leaves[1];
+
+        assertFalse(registry.isClaimed(batchId, 0));
+        assertEq(registry.claimedAt(batchId, 0), 0);
+        assertTrue(registry.verifyUnit(batchId, 0, secretHashes[0], proof0));
+
+        vm.prank(relayer);
+        registry.claimUnit(batchId, 0, secretHashes[0], proof0);
+
+        assertTrue(registry.isClaimed(batchId, 0));
+        assertEq(registry.claimedAt(batchId, 0), block.timestamp);
+        assertFalse(registry.isClaimed(batchId, 1));
+    }
+
+    function test_ClaimUnit_SecondClaimReverts() public {
+        (
+            uint256 batchId,
+            ,
+            bytes32[] memory secretHashes,
+            bytes32[] memory leaves,
+            
+        ) = _setupBatchWithUnits(2);
+
+        bytes32[] memory proof0 = new bytes32[](1);
+        proof0[0] = leaves[1];
+
+        vm.prank(relayer);
+        registry.claimUnit(batchId, 0, secretHashes[0], proof0);
+
+        vm.prank(relayer);
+        vm.expectRevert(abi.encodeWithSelector(ProvenanceRegistry.UnitAlreadyClaimed.selector, batchId, 0));
+        registry.claimUnit(batchId, 0, secretHashes[0], proof0);
+    }
+
+    function test_ClaimUnit_WrongSecretReverts() public {
+        (
+            uint256 batchId,
+            ,
+            ,
+            bytes32[] memory leaves,
+            
+        ) = _setupBatchWithUnits(2);
+
+        bytes32[] memory proof0 = new bytes32[](1);
+        proof0[0] = leaves[1];
+
+        bytes32 fakeSecretHash = keccak256("fake_secret");
+
+        vm.prank(relayer);
+        vm.expectRevert(ProvenanceRegistry.InvalidProof.selector);
+        registry.claimUnit(batchId, 0, fakeSecretHash, proof0);
+    }
+
+    function test_ClaimUnit_WrongSerialReverts() public {
+        (
+            uint256 batchId,
+            ,
+            bytes32[] memory secretHashes,
+            bytes32[] memory leaves,
+            
+        ) = _setupBatchWithUnits(2);
+
+        bytes32[] memory proof0 = new bytes32[](1);
+        proof0[0] = leaves[1];
+
+        // Using secretHash 0 with serial 1 should revert
+        vm.prank(relayer);
+        vm.expectRevert(ProvenanceRegistry.InvalidProof.selector);
+        registry.claimUnit(batchId, 1, secretHashes[0], proof0);
+    }
+
+    function test_ClaimUnit_TamperedProofReverts() public {
+        (
+            uint256 batchId,
+            ,
+            bytes32[] memory secretHashes,
+            ,
+            
+        ) = _setupBatchWithUnits(2);
+
+        bytes32[] memory tamperedProof = new bytes32[](1);
+        tamperedProof[0] = keccak256("tampered_leaf");
+
+        vm.prank(relayer);
+        vm.expectRevert(ProvenanceRegistry.InvalidProof.selector);
+        registry.claimUnit(batchId, 0, secretHashes[0], tamperedProof);
+    }
+
+    function test_ClaimUnit_NonRelayerReverts() public {
+        (
+            uint256 batchId,
+            ,
+            bytes32[] memory secretHashes,
+            bytes32[] memory leaves,
+            
+        ) = _setupBatchWithUnits(2);
+
+        bytes32[] memory proof0 = new bytes32[](1);
+        proof0[0] = leaves[1];
+
+        vm.prank(randomUser);
+        vm.expectRevert();
+        registry.claimUnit(batchId, 0, secretHashes[0], proof0);
+    }
+
+    function test_ClaimUnit_RecalledBatchReverts() public {
+        (
+            uint256 batchId,
+            ,
+            bytes32[] memory secretHashes,
+            bytes32[] memory leaves,
+            
+        ) = _setupBatchWithUnits(2);
+
+        bytes32[] memory proof0 = new bytes32[](1);
+        proof0[0] = leaves[1];
+
+        // Recall batch as Admin
+        vm.prank(admin);
+        registry.recallBatch(batchId, "Emergency Safety Recall");
+
+        vm.prank(relayer);
+        vm.expectRevert();
+        registry.claimUnit(batchId, 0, secretHashes[0], proof0);
+    }
+
+    function testFuzz_MerkleVerification(bytes32 secret0, bytes32 secret1) public {
+        vm.assume(secret0 != bytes32(0) && secret1 != bytes32(0));
+        vm.assume(secret0 != secret1);
+
+        bytes32 secretHash0 = keccak256(abi.encodePacked(secret0));
+        bytes32 secretHash1 = keccak256(abi.encodePacked(secret1));
+
+        uint256 batchId = 1;
+        bytes32 leaf0 = keccak256(abi.encodePacked(batchId, uint32(0), secretHash0));
+        bytes32 leaf1 = keccak256(abi.encodePacked(batchId, uint32(1), secretHash1));
+        bytes32 unitsRoot = _hashPair(leaf0, leaf1);
+
+        vm.prank(producer);
+        registry.createBatch("Coffee", "Origin", TEST_HASH, 2, "Station", unitsRoot);
+
+        bytes32[] memory proof0 = new bytes32[](1);
+        proof0[0] = leaf1;
+
+        assertTrue(registry.verifyUnit(batchId, 0, secretHash0, proof0));
+        assertFalse(registry.verifyUnit(batchId, 0, secretHash1, proof0));
     }
 }

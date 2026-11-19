@@ -24,10 +24,25 @@ import {
   Send,
   Download,
   ShieldAlert,
+  Printer,
+  FileJson,
+  X,
+  KeyRound,
+  ShieldCheck,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import { encodeFunctionData, keccak256, toHex, type Hex } from 'viem';
+import { generateBatchUnits } from '@provenance/shared';
 import { sendMetaMaskTransaction } from '@/lib/wallet';
+
+interface UnitLabel {
+  serial: number;
+  secret: string;
+  publicUrl: string;
+  claimUrl: string;
+  publicQr: string;
+  claimQr: string;
+}
 
 interface BatchSummary {
   id: number;
@@ -62,6 +77,8 @@ export default function ProducerPage() {
   const [txHash, setTxHash] = useState<string | null>(null);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [unitLabels, setUnitLabels] = useState<UnitLabel[]>([]);
+  const [showPrintModal, setShowPrintModal] = useState<boolean>(false);
 
   // Transfer states
   const [myBatches, setMyBatches] = useState<BatchSummary[]>([]);
@@ -157,10 +174,22 @@ export default function ProducerPage() {
       const contractAddress = getContractAddress();
       const metadataHash = keccak256(toHex(customMetadata));
 
+      // 1. Fetch current batch count to predict next batch ID
+      const totalBefore = (await publicClient.readContract({
+        address: contractAddress,
+        abi: ProvenanceRegistryABI,
+        functionName: 'batchCount',
+      })) as bigint;
+      const nextBatchId = Number(totalBefore) + 1;
+
+      // 2. Generate unit secrets and Merkle tree client-side
+      const generated = generateBatchUnits(nextBatchId, Number(unitCount));
+
+      // 3. Encode createBatch with Merkle root
       const calldata = encodeFunctionData({
         abi: ProvenanceRegistryABI,
         functionName: 'createBatch',
-        args: [productName, origin, metadataHash, Number(unitCount), location],
+        args: [productName, origin, metadataHash, Number(unitCount), location, generated.root],
       });
 
       const hash = await sendMetaMaskTransaction({
@@ -172,29 +201,90 @@ export default function ProducerPage() {
       setTxHash(hash);
       setStep('mining');
 
-      const receipt = await publicClient.waitForTransactionReceipt({ hash: hash as Hex });
+      await publicClient.waitForTransactionReceipt({ hash: hash as Hex });
 
-      // Read new batchCount to determine the created batch ID
-      const total = (await publicClient.readContract({
-        address: contractAddress,
-        abi: ProvenanceRegistryABI,
-        functionName: 'batchCount',
-      })) as bigint;
+      // 4. Upload proofs to relayer backend
+      try {
+        await fetch('/api/proofs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            batchId: nextBatchId,
+            units: generated.units.map((u) => ({
+              serial: u.serial,
+              proof: u.proof,
+              secretHash: u.secretHash,
+            })),
+          }),
+        });
+      } catch (uploadErr) {
+        console.warn('Failed to upload unit proofs to relayer:', uploadErr);
+      }
 
-      const newBatchId = Number(total);
-      setCreatedBatchId(newBatchId);
+      setCreatedBatchId(nextBatchId);
 
-      // Generate QR Code encoding direct public scan URL
-      const scanUrl = `${window.location.origin}/v/${newBatchId}`;
+      // 5. Generate QR codes for all units
+      const host = window.location.origin;
+      const unitsWithQrs: UnitLabel[] = await Promise.all(
+        generated.units.map(async (u) => {
+          const publicUrl = `${host}/u/${nextBatchId}/${u.serial}`;
+          const claimUrl = `${host}/claim/${nextBatchId}/${u.serial}#${u.secret}`;
+          const publicQr = await QRCode.toDataURL(publicUrl, { width: 180, margin: 1 });
+          const claimQr = await QRCode.toDataURL(claimUrl, { width: 180, margin: 1 });
+          return {
+            serial: u.serial,
+            secret: u.secret,
+            publicUrl,
+            claimUrl,
+            publicQr,
+            claimQr,
+          };
+        })
+      );
+
+      setUnitLabels(unitsWithQrs);
+
+      // Generate batch QR Code
+      const scanUrl = `${host}/v/${nextBatchId}`;
       const qr = await QRCode.toDataURL(scanUrl, { width: 300, margin: 2 });
       setQrDataUrl(qr);
 
       setStep('done');
+      setShowPrintModal(true);
     } catch (err: any) {
       console.error(err);
       setError(err?.message || 'Transaction rejected or failed in MetaMask');
       setStep('idle');
     }
+  }
+
+  function downloadPrintSheetJson() {
+    if (!createdBatchId || unitLabels.length === 0) return;
+    const data = {
+      batchId: createdBatchId,
+      productName,
+      origin,
+      unitCount: unitLabels.length,
+      createdAt: new Date().toISOString(),
+      warning: 'CRITICAL: Keep this file secure. Lost secrets cannot be recovered.',
+      units: unitLabels.map((u) => ({
+        serial: u.serial,
+        secret: u.secret,
+        publicUrl: u.publicUrl,
+        claimUrl: u.claimUrl,
+      })),
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `batch-${createdBatchId}-unit-labels.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function handlePrint() {
+    window.print();
   }
 
   // 3. Initiate Handover
@@ -321,6 +411,15 @@ export default function ProducerPage() {
                     )}
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-2">
+                      {unitLabels.length > 0 && (
+                        <button
+                          onClick={() => setShowPrintModal(true)}
+                          className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow hover:bg-indigo-700 transition"
+                        >
+                          <Printer className="h-4 w-4" />
+                          <span>View Anti-Copy Print Sheet ({unitLabels.length} Units)</span>
+                        </button>
+                      )}
                       {qrDataUrl && (
                         <a
                           href={qrDataUrl}
@@ -328,7 +427,7 @@ export default function ProducerPage() {
                           className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white shadow hover:bg-emerald-700"
                         >
                           <Download className="h-4 w-4" />
-                          <span>Download QR Label</span>
+                          <span>Download Batch QR</span>
                         </a>
                       )}
                       <Link
@@ -594,6 +693,119 @@ export default function ProducerPage() {
                   </form>
                 </div>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Print Sheet Modal */}
+        {showPrintModal && (
+          <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+            <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl border border-slate-200 overflow-hidden max-h-[90vh] flex flex-col">
+              {/* Modal Header */}
+              <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center">
+                    <Printer className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      Unit Anti-Copy Print Sheet &bull; Batch #{createdBatchId}
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      {unitLabels.length} packaging units with client-generated scratch secrets
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={downloadPrintSheetJson}
+                    className="flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-xs"
+                  >
+                    <FileJson className="h-3.5 w-3.5 text-indigo-600" />
+                    <span>Download JSON</span>
+                  </button>
+                  <button
+                    onClick={handlePrint}
+                    className="flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-1.5 text-xs font-bold text-white shadow-xs hover:bg-indigo-700"
+                  >
+                    <Printer className="h-3.5 w-3.5" />
+                    <span>Print Sheet</span>
+                  </button>
+                  <button
+                    onClick={() => setShowPrintModal(false)}
+                    className="rounded-xl p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-200/60"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="p-6 overflow-y-auto space-y-6">
+                {/* Critical Security Warning Banner */}
+                <div className="rounded-2xl bg-rose-50 border-2 border-rose-200 p-4 text-xs text-rose-900 flex items-start gap-3">
+                  <ShieldAlert className="h-5 w-5 text-rose-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <span className="font-extrabold uppercase tracking-wider text-rose-700 block">
+                      ⚠️ Critical: Lost Secrets Cannot Be Recovered
+                    </span>
+                    <p className="text-[11px] leading-relaxed text-rose-800">
+                      The 128-bit scratch-off secrets shown below were generated purely inside your browser and committed to the Ethereum blockchain as a cryptographic Merkle root. To ensure total anti-counterfeiting security, the raw secrets are <strong>NEVER stored on the server or database</strong>. You must download or print this sheet now before navigating away, or the physical scratch codes will be permanently lost.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Units Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {unitLabels.map((u) => (
+                    <div
+                      key={u.serial}
+                      className="rounded-2xl border-2 border-slate-200 p-4 bg-slate-50/50 space-y-3"
+                    >
+                      <div className="flex items-center justify-between border-b border-slate-200/80 pb-2">
+                        <span className="text-xs font-black text-slate-900">
+                          Unit Serial #{u.serial}
+                        </span>
+                        <span className="text-[10px] font-mono font-semibold text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                          ID: #{createdBatchId}-{u.serial}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        {/* Public Box Exterior QR */}
+                        <div className="bg-white p-2.5 rounded-xl border border-slate-200 text-center space-y-1.5">
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 block">
+                            Public Outer QR
+                          </span>
+                          <img
+                            src={u.publicQr}
+                            alt={`Public Unit ${u.serial}`}
+                            className="w-24 h-24 mx-auto"
+                          />
+                          <span className="text-[9px] text-slate-500 block leading-tight">
+                            Printed on box exterior (Shows journey)
+                          </span>
+                        </div>
+
+                        {/* Scratch-Off Foil QR */}
+                        <div className="bg-amber-50/60 p-2.5 rounded-xl border border-amber-200 text-center space-y-1.5">
+                          <span className="text-[9px] font-bold uppercase tracking-wider text-amber-700 block">
+                            Scratch Layer (Hidden)
+                          </span>
+                          <img
+                            src={u.claimQr}
+                            alt={`Scratch Unit ${u.serial}`}
+                            className="w-24 h-24 mx-auto"
+                          />
+                          <span className="text-[9px] font-mono font-bold text-amber-900 block truncate">
+                            {u.secret}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         )}
