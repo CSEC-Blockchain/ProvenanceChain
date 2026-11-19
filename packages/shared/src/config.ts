@@ -10,6 +10,12 @@ export const CHAINS = {
     rpcUrl: 'https://sepolia.base.org',
     blockExplorer: 'https://sepolia.basescan.org',
   },
+  SEPOLIA: {
+    id: 11155111,
+    name: 'Sepolia',
+    rpcUrl: 'https://ethereum-sepolia-rpc.publicnode.com',
+    blockExplorer: 'https://sepolia.etherscan.io',
+  },
 } as const;
 
 export const CONTRACT_ADDRESSES: Record<number, `0x${string}`> = {
@@ -17,6 +23,8 @@ export const CONTRACT_ADDRESSES: Record<number, `0x${string}`> = {
   31337: '0x5fbdb2315678afecb367f032d93f642f64180aa3',
   // Base Sepolia default placeholder
   84532: '0x5fbdb2315678afecb367f032d93f642f64180aa3',
+  // Ethereum Sepolia default placeholder
+  11155111: '0x5fbdb2315678afecb367f032d93f642f64180aa3',
 };
 
 export function getContractAddress(chainId?: number): `0x${string}` {

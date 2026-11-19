@@ -27,11 +27,29 @@ export const baseSepoliaChain = defineChain({
   },
 });
 
-export const isBaseSepolia = process.env.NEXT_PUBLIC_CHAIN_ID === '84532';
-export const activeChain = isBaseSepolia ? baseSepoliaChain : anvilChain;
+export const sepoliaChain = defineChain({
+  id: 11155111,
+  name: 'Sepolia',
+  nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+  rpcUrls: {
+    default: {
+      http: ['https://ethereum-sepolia-rpc.publicnode.com'],
+    },
+  },
+  blockExplorers: {
+    default: { name: 'Etherscan', url: 'https://sepolia.etherscan.io' },
+  },
+});
+
+export const activeChain =
+  process.env.NEXT_PUBLIC_CHAIN_ID === '11155111'
+    ? sepoliaChain
+    : process.env.NEXT_PUBLIC_CHAIN_ID === '84532'
+    ? baseSepoliaChain
+    : anvilChain;
 
 export const wagmiConfig = createConfig({
-  chains: [anvilChain, baseSepoliaChain],
+  chains: [anvilChain, baseSepoliaChain, sepoliaChain],
   connectors: [
     injected({
       target() {
@@ -54,6 +72,7 @@ export const wagmiConfig = createConfig({
   transports: {
     [anvilChain.id]: http(process.env.NEXT_PUBLIC_RPC_URL || 'http://127.0.0.1:8545'),
     [baseSepoliaChain.id]: http('https://sepolia.base.org'),
+    [sepoliaChain.id]: http('https://ethereum-sepolia-rpc.publicnode.com'),
   },
   ssr: true,
 });
