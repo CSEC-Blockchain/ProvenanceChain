@@ -18,7 +18,7 @@ import {
   Clock,
   Sparkles,
 } from 'lucide-react';
-import { activeChain, isBaseSepolia } from '@/lib/viem';
+import { activeChain, isBaseSepolia, isSepolia } from '@/lib/viem';
 
 export const revalidate = 0; // Fresh on every scan
 
@@ -57,7 +57,12 @@ export default async function ConsumerScanPage({ params }: PageProps) {
   const isAuthentic = verdict === 'AUTHENTIC';
   const isNotFound = verdict === 'NOT_FOUND';
 
-  const explorerUrl = isBaseSepolia ? 'https://sepolia.basescan.org' : null;
+  const explorerUrl = isSepolia
+    ? 'https://sepolia.etherscan.io'
+    : isBaseSepolia
+    ? 'https://sepolia.basescan.org'
+    : null;
+  const explorerName = isSepolia ? 'Etherscan' : isBaseSepolia ? 'BaseScan' : 'Explorer';
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
@@ -278,7 +283,7 @@ export default async function ConsumerScanPage({ params }: PageProps) {
                             rel="noreferrer"
                             className="inline-flex items-center gap-1 text-emerald-600 hover:underline text-[10px]"
                           >
-                            <span>BaseScan</span>
+                            <span>{explorerName}</span>
                             <ExternalLink className="h-2.5 w-2.5" />
                           </a>
                         ) : (

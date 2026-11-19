@@ -33,7 +33,10 @@ export const sepoliaChain = defineChain({
   nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
   rpcUrls: {
     default: {
-      http: ['https://ethereum-sepolia-rpc.publicnode.com'],
+      http: [
+        process.env.NEXT_PUBLIC_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com',
+        'https://rpc.sepolia.ethpandaops.io',
+      ],
     },
   },
   blockExplorers: {
@@ -42,11 +45,14 @@ export const sepoliaChain = defineChain({
 });
 
 export const activeChain =
-  process.env.NEXT_PUBLIC_CHAIN_ID === '11155111'
-    ? sepoliaChain
+  process.env.NEXT_PUBLIC_CHAIN_ID === '31337'
+    ? anvilChain
     : process.env.NEXT_PUBLIC_CHAIN_ID === '84532'
     ? baseSepoliaChain
-    : anvilChain;
+    : sepoliaChain;
+
+export const isBaseSepolia = activeChain.id === 84532;
+export const isSepolia = activeChain.id === 11155111;
 
 export const wagmiConfig = createConfig({
   chains: [anvilChain, baseSepoliaChain, sepoliaChain],

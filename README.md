@@ -32,7 +32,25 @@ Counterfeit and adulterated products (such as single-origin specialty coffee, ba
 
 ---
 
-## 2. Architecture & Data Flow
+## 2. Live Public Testnet Deployment
+
+ProvenanceChain is deployed on **Ethereum Sepolia Testnet**:
+
+| Parameter | Value |
+| :--- | :--- |
+| **Live Web App (Vercel)** | [https://provenance-chain-mu.vercel.app](https://provenance-chain-mu.vercel.app) |
+| **Smart Contract Address** | [`0x2746f2f4a94dff0a0eda7deb38446d650a9fb1a8`](https://sepolia.etherscan.io/address/0x2746f2f4a94dff0a0eda7deb38446d650a9fb1a8) |
+| **Network Name** | Ethereum Sepolia Testnet |
+| **Chain ID** | `11155111` |
+| **Root Admin Account** | `0x6411585cE9370C91B6926B85C761f902C4443fbF` |
+| **Block Explorer** | [Etherscan Sepolia](https://sepolia.etherscan.io/address/0x2746f2f4a94dff0a0eda7deb38446d650a9fb1a8) |
+
+> [!NOTE]
+> **Connecting via MetaMask**: Switch your MetaMask wallet to the **Sepolia** network (Chain ID: `11155111`). When connecting with the root deployer account (`0x6411...3fbF`), the application automatically detects and displays your **`ADMIN`** role badge in the navigation header and unlocks the `/admin` portal.
+
+---
+
+## 3. Architecture & Data Flow
 
 ```mermaid
 flowchart TD
