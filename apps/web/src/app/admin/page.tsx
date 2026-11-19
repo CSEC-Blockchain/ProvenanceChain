@@ -25,7 +25,7 @@ import {
   ExternalLink,
   AlertTriangle,
 } from 'lucide-react';
-import { encodeFunctionData, keccak256, toHex, type Hex } from 'viem';
+import { encodeFunctionData, keccak256, toHex, getAddress, parseAbiItem, type Hex } from 'viem';
 import { sendMetaMaskTransaction } from '@/lib/wallet';
 
 interface RegisteredEntity {
@@ -98,31 +98,84 @@ export default function AdminPage() {
 
       setIsAdmin(roleStr === 'ADMIN');
 
-      // Load known entities info
+      // Load known and on-chain registered entities
+      let onChainAccounts: string[] = [];
+      try {
+        const currentBlock = await publicClient.getBlockNumber();
+        const fromBlock = currentBlock > BigInt(40000) ? currentBlock - BigInt(40000) : BigInt(0);
+        const roleLogs = await publicClient.getLogs({
+          address: contractAddress,
+          event: parseAbiItem('event RoleGranted(bytes32 indexed role, address indexed account, address indexed sender)'),
+          fromBlock,
+          toBlock: 'latest',
+        });
+        onChainAccounts = roleLogs.map((l: any) => l.args.account as string);
+      } catch (err) {
+        console.warn('Could not fetch RoleGranted logs:', err);
+      }
+
+      let storedAccounts: string[] = [];
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem('provenance_registered_entities');
+          if (raw) storedAccounts = JSON.parse(raw);
+        } catch {}
+      }
+
+      const candidateAddresses = [
+        ...defaultKnownAddresses.map((d) => d.address),
+        ...storedAccounts,
+        ...onChainAccounts,
+        '0xa345AF15470a7CA692710cf3921fa40cBa07824e',
+      ];
+
+      const seen = new Set<string>();
+      const uniqueEntries: { addr: string; label: string }[] = [];
+      for (const rawAddr of candidateAddresses) {
+        try {
+          const checksummed = getAddress(rawAddr);
+          const lower = checksummed.toLowerCase();
+          if (!seen.has(lower)) {
+            seen.add(lower);
+            const defaultItem = defaultKnownAddresses.find(
+              (d) => d.address.toLowerCase() === lower
+            );
+            uniqueEntries.push({ addr: checksummed, label: defaultItem?.label || '' });
+          }
+        } catch {}
+      }
+
       const list: RegisteredEntity[] = [];
-      for (const item of defaultKnownAddresses) {
+      for (const item of uniqueEntries) {
         try {
           const r: string = (await publicClient.readContract({
             address: contractAddress,
             abi: ProvenanceRegistryABI,
             functionName: 'getRole',
-            args: [item.address as Hex],
+            args: [item.addr as Hex],
           })) as string;
 
           const n: string = (await publicClient.readContract({
             address: contractAddress,
             abi: ProvenanceRegistryABI,
             functionName: 'displayName',
-            args: [item.address as Hex],
+            args: [item.addr as Hex],
           })) as string;
 
           list.push({
-            address: item.address,
+            address: item.addr,
             role: r,
-            displayName: n || item.label,
+            displayName: n || item.label || (r !== 'NONE' ? `${r} Entity` : 'Registered Address'),
           });
         } catch {}
       }
+
+      list.sort((a, b) => {
+        if (a.role !== 'NONE' && b.role === 'NONE') return -1;
+        if (a.role === 'NONE' && b.role !== 'NONE') return 1;
+        return 0;
+      });
+
       setEntities(list);
 
       // Load all supply chain batches and activities
@@ -245,10 +298,24 @@ export default function AdminPage() {
         await publicClient.waitForTransactionReceipt({ hash: hash2 as Hex });
       }
 
+      // 3. Save newly registered entity to localStorage
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem('provenance_registered_entities');
+          const existing: string[] = raw ? JSON.parse(raw) : [];
+          const valid = getAddress(targetAddress);
+          if (!existing.some((x) => x.toLowerCase() === valid.toLowerCase())) {
+            existing.push(valid);
+            localStorage.setItem('provenance_registered_entities', JSON.stringify(existing));
+          }
+        } catch {}
+      }
+
       setStatusMessage(`Successfully granted ${targetRole} role to ${targetAddress}`);
       setActiveStep('done');
       setTargetAddress('');
       setTargetName('');
+      await loadAdminData();
     } catch (err: any) {
       console.error(err);
       setError(err?.message || 'Admin operation failed in MetaMask');

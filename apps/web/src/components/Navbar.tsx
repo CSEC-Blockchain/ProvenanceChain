@@ -59,6 +59,16 @@ export function Navbar() {
     }
 
     loadRole();
+
+    if (typeof window !== 'undefined' && (window as any).ethereum?.on) {
+      const handleAccountsChanged = () => {
+        loadRole();
+      };
+      (window as any).ethereum.on('accountsChanged', handleAccountsChanged);
+      return () => {
+        (window as any).ethereum.removeListener('accountsChanged', handleAccountsChanged);
+      };
+    }
   }, [address, isWrongNetwork]);
 
   return (
@@ -168,21 +178,28 @@ export function Navbar() {
             {isConnected && address ? (
               <div className="flex items-center gap-2">
                 {/* Role badge */}
-                <span
-                  className={`hidden sm:inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold ${
-                    role === 'PRODUCER'
-                      ? 'bg-indigo-100 text-indigo-800'
-                      : role === 'DISTRIBUTOR'
-                      ? 'bg-amber-100 text-amber-900'
-                      : role === 'SHOP'
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : role === 'ADMIN'
-                      ? 'bg-purple-100 text-purple-800'
-                      : 'bg-slate-100 text-slate-600'
-                  }`}
-                >
-                  {userName ? `${role}: ${userName}` : role}
-                </span>
+                {loadingRole ? (
+                  <span className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-100 text-slate-500">
+                    <RefreshCw className="h-3 w-3 animate-spin text-slate-400" />
+                    <span>Detecting role...</span>
+                  </span>
+                ) : (
+                  <span
+                    className={`hidden sm:inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-bold ${
+                      role === 'PRODUCER'
+                        ? 'bg-indigo-100 text-indigo-800'
+                        : role === 'DISTRIBUTOR'
+                        ? 'bg-amber-100 text-amber-900'
+                        : role === 'SHOP'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : role === 'ADMIN'
+                        ? 'bg-purple-100 text-purple-800'
+                        : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    {userName ? `${role}: ${userName}` : role}
+                  </span>
+                )}
 
                 {/* Account button with disconnect */}
                 <button

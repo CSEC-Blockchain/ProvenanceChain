@@ -1,15 +1,18 @@
-import { createPublicClient, http, type Hex } from 'viem';
+import { createPublicClient, http, fallback, type Hex } from 'viem';
 import { ProvenanceRegistryABI } from '@provenance/shared';
 import { activeChain, anvilChain, baseSepoliaChain, sepoliaChain, isBaseSepolia, isSepolia } from './wagmi';
 
 export const publicClient = createPublicClient({
   chain: activeChain,
-  transport: http(
-    process.env.NEXT_PUBLIC_RPC_URL ||
-    (activeChain.id === 11155111
-      ? 'https://ethereum-sepolia-rpc.publicnode.com'
-      : 'http://127.0.0.1:8545')
-  ),
+  transport:
+    activeChain.id === 11155111
+      ? fallback([
+          http(process.env.NEXT_PUBLIC_RPC_URL || 'https://ethereum-sepolia-rpc.publicnode.com'),
+          http('https://rpc.sepolia.ethpandaops.io'),
+          http('https://1rpc.io/sepolia'),
+          http('https://sepolia.gateway.tenderly.co'),
+        ])
+      : http(process.env.NEXT_PUBLIC_RPC_URL || 'http://127.0.0.1:8545'),
 });
 
 export function getContractAddress(): `0x${string}` {
