@@ -17,7 +17,7 @@
     "test:e2e": "npx playwright test",
     "seed": "tsx scripts/seed-demo.ts",
     "deploy:base-sepolia": "export PATH=\"$HOME/.foundry/bin:$PATH\" && export PRIVATE_KEY=\"$(echo $PRIVATE_KEY | sed 's/^0x//; s/^/0x/')\" && cd contracts && forge script script/Deploy.s.sol:DeployScript --rpc-url https://sepolia.base.org --broadcast",
-    "deploy:sepolia": "export PATH=\"$HOME/.foundry/bin:$PATH\" && export PRIVATE_KEY=\"$(echo $PRIVATE_KEY | sed 's/^0x//; s/^/0x/')\" && cd contracts && forge script script/Deploy.s.sol:DeployScript --rpc-url https://ethereum-sepolia-rpc.publicnode.com --broadcast"
+    "deploy:sepolia": "export PATH=\"$HOME/.foundry/bin:$PATH\" && export PRIVATE_KEY=\"$(echo $PRIVATE_KEY | sed 's/^0x//; s/^/0x/')\" && cd contracts && forge script script/Deploy.s.sol:DeployScript --rpc-url https://gateway.tenderly.co/public/sepolia --broadcast"
   },
   "devDependencies": {
     "@playwright/test": "^1.43.1",

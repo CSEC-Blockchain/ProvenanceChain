@@ -4,12 +4,20 @@ out
 dist
 *.db
 *.db-journal
-.env*.local
 test-results
 playwright-report
 contracts/out
 contracts/cache
 contracts/broadcast
+
+# Environment files
 .env
+.env.*
+.env*.local
+*.env
+**/.env
+**/.env.*
+!.env.example
+
 demo-links.md
 playwright.config.ts
