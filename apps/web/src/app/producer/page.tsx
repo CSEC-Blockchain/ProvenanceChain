@@ -185,12 +185,30 @@ export default function ProducerPage() {
       // 2. Generate unit secrets and Merkle tree client-side
       const generated = generateBatchUnits(nextBatchId, Number(unitCount));
 
-      // 3. Encode createBatch with Merkle root
-      const calldata = encodeFunctionData({
-        abi: ProvenanceRegistryABI,
-        functionName: 'createBatch',
-        args: [productName, origin, metadataHash, Number(unitCount), location, generated.root],
-      });
+      // 3. Encode createBatch with Merkle root (fallback to 5-arg createBatch if connected to legacy contract)
+      let calldata: Hex;
+      try {
+        await publicClient.estimateContractGas({
+          address: contractAddress,
+          abi: ProvenanceRegistryABI,
+          functionName: 'createBatch',
+          args: [productName, origin, metadataHash, Number(unitCount), location, generated.root],
+          account: address as Hex,
+        });
+
+        calldata = encodeFunctionData({
+          abi: ProvenanceRegistryABI,
+          functionName: 'createBatch',
+          args: [productName, origin, metadataHash, Number(unitCount), location, generated.root],
+        });
+      } catch (estErr) {
+        console.warn('6-arg createBatch gas estimate failed, falling back to 5-arg overload:', estErr);
+        calldata = encodeFunctionData({
+          abi: ProvenanceRegistryABI,
+          functionName: 'createBatch',
+          args: [productName, origin, metadataHash, Number(unitCount), location],
+        });
+      }
 
       const hash = await sendMetaMaskTransaction({
         to: contractAddress as Hex,
