@@ -2,5 +2,11 @@
 src = "src"
 out = "out"
 libs = ["lib"]
+solc = "0.8.24"
 
-# See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
+[rpc_endpoints]
+base_sepolia = "https://sepolia.base.org"
+anvil = "http://127.0.0.1:8545"
+
+[etherscan]
+base_sepolia = { key = "${BASESCAN_API_KEY:-}", url = "https://api-sepolia.basescan.org/api" }

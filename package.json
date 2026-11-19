@@ -15,7 +15,8 @@
     "test:shared": "npm run test --workspace=packages/shared",
     "test:web": "npm run test --workspace=apps/web",
     "test:e2e": "npx playwright test",
-    "seed": "tsx scripts/seed-demo.ts"
+    "seed": "tsx scripts/seed-demo.ts",
+    "deploy:base-sepolia": "export PATH=\"$HOME/.foundry/bin:$PATH\" && cd contracts && forge script script/Deploy.s.sol:DeployScript --rpc-url https://sepolia.base.org --broadcast"
   },
   "devDependencies": {
     "@playwright/test": "^1.43.1",

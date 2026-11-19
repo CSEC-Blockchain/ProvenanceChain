@@ -10,4 +10,6 @@ playwright-report
 contracts/out
 contracts/cache
 contracts/broadcast
-
+.env
+demo-links.md
+playwright.config.ts
